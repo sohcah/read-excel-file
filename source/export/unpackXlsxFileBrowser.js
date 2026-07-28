@@ -21,9 +21,10 @@
 //
 // import unzipFromArrayBufferSync from '../zip/unzipFromArrayBufferSync.js'
 import unzipFromArrayBuffer from '../zip/unzipFromArrayBuffer.js'
-
-import convertValuesFromUint8ArraysToStrings from './convertValuesFromUint8ArraysToStrings.js'
+import UnzipError from '../zip/UnzipError.js'
+import InvalidInputError from '../xlsx/file/InvalidInputError.js'
 import filterZipArchiveEntry from './filterZipArchiveEntry.js'
+import validateLeadingBytes from '../xlsx/file/validateLeadingBytes.js'
 
 import checkpoint, { resetCheckpoint } from '../utility/checkpoint.js'
 
@@ -31,7 +32,7 @@ import checkpoint, { resetCheckpoint } from '../utility/checkpoint.js'
  * Unpacks `*.xlsx` file contents.
  * An `.xlsx` file is really just a `.zip` archive with `.xml` files inside.
  * @param  {(File|Blob|ArrayBuffer)} input
- * @return {Promise<Record<string,string>} Resolves to an object holding `*.xlsx` file entries.
+ * @return {Promise<Record<string,Uint8Array>} Resolves to an object holding `*.xlsx` file entries.
  */
 export default function unpackXlsxFile(input) {
 	resetCheckpoint()
@@ -43,12 +44,21 @@ export default function unpackXlsxFile(input) {
 }
 
 function getResultFromArrayBuffer(arrayBuffer) {
-	return unzipFromArrayBuffer(arrayBuffer, { filter: filterZipArchiveEntry }).then(
-		convertValuesFromUint8ArraysToStrings
-	)
+	validateLeadingBytes(new Uint8Array(arrayBuffer))
+	return unzipFromArrayBuffer(arrayBuffer, { filter: filterZipArchiveEntry })
+		.then(
+			result => result,
+			(error) => {
+				if (error instanceof UnzipError) {
+					throw new InvalidInputError('INVALID_ZIP', error.cause)
+				} else {
+					throw error
+				}
+			}
+		)
 }
 
 // function getResultFromArrayBuffer(arrayBuffer) {
 // 	const result = unzipFromArrayBufferSync(arrayBuffer, { filter: filterZipArchiveEntry })
-// 	return Promise.resolve(convertValuesFromUint8ArraysToStrings(result))
+// 	return Promise.resolve(result)
 // }

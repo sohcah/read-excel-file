@@ -2,6 +2,9 @@ exports = module.exports = require('../commonjs/export/readXlsxFileBrowser.js').
 exports['default'] = require('../commonjs/export/readXlsxFileBrowser.js').default
 
 exports.readSheet = require('../commonjs/export/readSheetBrowser.js').default
+exports.InvalidInputError = require('../commonjs/xlsx/file/InvalidInputError.js').default
+exports.InvalidSpreadsheetError = require('../commonjs/xlsx/InvalidSpreadsheetError.js').default
+exports.SheetNotFoundError = require('../commonjs/xlsx/SheetNotFoundError.js').default
 
 // `parseSheetData()`
 exports.parseSheetData = require('../commonjs/parseSheetData/parseSheetData.js').default

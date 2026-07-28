@@ -1,5 +1,5 @@
 export default async function({ readFile, readSheet, expect }) {
-	const contentsBuffer = readFile()
+	const contentsBuffer = await readFile()
 
 	const data = await readSheet(contentsBuffer)
 
@@ -9,6 +9,12 @@ export default async function({ readFile, readSheet, expect }) {
 	])
 
 	// should handle empty buffer input
-	const emptyBuffer = Buffer.alloc(0)
-	expect(() => readSheet(emptyBuffer)).to.throw('No data')
+	let thrown
+	try {
+		await readSheet(Buffer.alloc(0))
+	} catch (error) {
+		thrown = error
+	}
+	expect(thrown).to.be.an('error')
+	expect(thrown.code).to.equal('NO_DATA')
 }

@@ -9,53 +9,30 @@
 // * `unzipper` can completely skip a given compressed file entry if it's of no interest.
 //   This means that a `.zip` archive could be read in multiple passes without performance penalty.
 
-import { Parse } from 'unzipper-esm'
+import { Parse, ZipFileError } from 'unzipper-esm'
 
-import { Buffer } from 'buffer'
+import { createUnzipError } from './UnzipError.js'
+
+const PROMISE_RESOLVE_VALUE = undefined
 
 /**
  * Reads `*.zip` file contents.
  * @param  {Stream} stream
- * @return {Promise<Record<string,Buffer>>} Resolves to an object holding `*.zip` file entries. P.S. `Buffer` is a `Uint8Array`.
+ * @param  {function} onFile
+ * @param  {function} onFileData
+ * @param  {function} onFileDataEnd
+ * @return {Promise<void>}
  */
-export default function unzipFromStream(stream, { filter } = {}) {
-	// The `files` object stores the files and their contents.
-	const files = {}
-	const filesChunks = {}
-
-	const onFile = (filePath) => {
-		// See if this file should be ignored.
-		// If it should, this entry won't be processed, i.e. `Unzip` will not try
-		// to decompress its data, and will just discard it.
-		if (filter && !filter({ path: filePath })) {
-			return false
-		}
-		filesChunks[filePath] = []
-	}
-
-	const onFileData = (filePath, chunk) => {
-		filesChunks[filePath].push(chunk)
-	}
-
-	const onFileDataEnd = (filePath) => {
-		files[filePath] = Buffer.concat(filesChunks[filePath])
-		delete filesChunks[filePath]
-	}
-
-	return unzipFromStream_(stream, onFile, onFileData, onFileDataEnd).then(() => {
-		return files
-	})
-}
-
-const PROMISE_RESOLVE_VALUE = undefined
-
-function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
+export default function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 	return new Promise((resolve, reject) => {
 		const promises = []
 
 		let errored = false
 
 		const onError = (error) => {
+			if (error instanceof ZipFileError) {
+				error = createUnzipError(error)
+			}
 			if (!errored) {
 				errored = true
 				reject(error)
@@ -63,7 +40,7 @@ function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 		}
 
 		stream
-			// This first "error" listener catches the original stream errors.
+			// This first "error" listener catches errors emitted from the input stream (for example, a file read error).
 			//
 			// That's because the .pipe() method does not automatically propagate errors
 			// from a source (input) stream to the destination stream or the end of the pipeline.
@@ -108,7 +85,13 @@ function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 				if (errored) {
 					ignore = true
 				}
-				if (onFile(entry.path) === false) {
+				// `entry.vars.uncompressedSize` will be `0` for `.zip` archives
+				// that were created in a streaming fashion.
+				// The `const fileSizeKnown = ...` code was copy-pasted from `node-unzipper` source code:
+				// https://github.com/ZJONSSON/node-unzipper/blob/master/lib/Open/unzip.js
+				const uncompressedFileSizeIsKnown = !(entry.vars.flags & 0x08) || entry.vars.compressedSize > 0
+				const uncompressedFileSize = uncompressedFileSizeIsKnown ? entry.vars.uncompressedSize : undefined
+				if (onFile(entry.path, uncompressedFileSize) === false) {
 					ignore = true
 				}
 

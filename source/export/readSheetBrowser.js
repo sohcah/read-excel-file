@@ -1,11 +1,9 @@
-// import createWorkerFunction from 'worker-f/browser'
+import createWorkerFunction from 'worker-f/browser'
 
-import parseXmlStream from '../xml/parseXmlStream.js'
+import parseXml from '../xml/parseXml.js'
 import unpackXlsxFile from './unpackXlsxFileBrowser.js'
 
 import parseSheet from './parseSheet.js'
-
-const createWorkerFunction = undefined
 
 /**
  * Reads a single sheet from an `.xlsx` file.
@@ -22,5 +20,5 @@ export default function readSheet(input, sheet, options) {
 		sheet = undefined
 	}
 	return unpackXlsxFile(input)
-		.then((contents) => parseSheet(createWorkerFunction, parseXmlStream, contents, sheet, options))
+		.then((contents) => parseSheet(createWorkerFunction, parseXml, contents, sheet, options))
 }

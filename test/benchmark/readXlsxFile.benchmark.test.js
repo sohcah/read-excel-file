@@ -1,8 +1,16 @@
 import { describe, it } from 'mocha'
 
+import parsePhoneNumber from 'libphonenumber-js'
+
 import path from 'node:path'
 
 import readSheet from '../../source/export/readSheetNode.js'
+
+import Email from '../../source/parseSheetData/types/additional/Email.js'
+
+// Set this flag to `true` for an additional step
+// of transforming sheet data using a `schema`.
+const WITH_SCHEMA = false
 
 // Enables the console output in `checkpoint.js`.
 global.READ_EXCEL_FILE_CHECKPOINTS = true
@@ -14,17 +22,17 @@ const FILES = [
 	'50mb.xlsx'
 ]
 
-const USE_SCHEMA = false
-
 const SCHEMA = {
 	name: {
 		column: 'Name'
 	},
 	email: {
-		column: 'Email'
+		column: 'Email',
+		type: Email
 	},
 	phone: {
-		column: 'Phone'
+		column: 'Phone',
+		type: PhoneNumber
 	},
 	address: {
 		column: 'Address'
@@ -43,6 +51,16 @@ const SCHEMA = {
 	}
 }
 
+// An example of a custom `type` parser function.
+// It will parse the cell value when it's not empty.
+function PhoneNumber(value) {
+  const number = parsePhoneNumber(value)
+  if (!number) {
+    throw new Error('invalid')
+  }
+  return number
+}
+
 describe('readXlsxFile (benchmark)', () => {
 	// This test case is not written using `async`/`await` syntax to work around the error:
 	// "Error: Timeout of 2000ms exceeded."
@@ -54,7 +72,7 @@ describe('readXlsxFile (benchmark)', () => {
 			const startedAt = Date.now()
 			return readSheet(
 				path.resolve('./test/benchmark/' + fileName),
-				{ schema: USE_SCHEMA ? SCHEMA : undefined }
+				{ schema: WITH_SCHEMA ? SCHEMA : undefined }
 			).catch((error) => {
 				// Don't let any potential errors, such as `schema` mismatch,
 				// to interrupt the execution of the benchmark.

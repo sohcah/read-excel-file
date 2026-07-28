@@ -48,8 +48,8 @@ export default [
 		description: 'should support custom `parseNumber` function'
 	},
 	{
-		name: 'dimensions',
-		description: 'should only read the area of specified dimensions from a sheet'
+		name: 'dimensions-absent',
+		description: 'should read the entire sheet when dimensions aren\'t specified'
 	},
 	{
 		name: 'read-sheet',
@@ -64,15 +64,27 @@ export default [
 		description: 'should skip "phonetic" elements `<rPh/>` and handle "rich formatting" `<rPr/>` elements when parsing `sharedStrings.xml`'
 	},
 	{
-		name: 'string-formula',
-		description: 'should return `<v/>` element content when a `type: string` cell is defined by a formula'
+		name: 'formula',
+		description: 'should read pre-computed results of formulas'
+	},
+	{
+		name: 'error-in-cell',
+		description: 'should read a sheet that has a cell with an error'
+	},
+	{
+		name: 'gaps',
+		description: 'should read a sheet that has gaps in rows and columns'
 	},
 	{
 		name: 'xml-namespace',
 		description: 'should correctly parse XML namespaces'
 	},
 	{
-		name: 'invalid-file-structure',
+		name: 'internal-file-missing',
 		description: '`workbook.xml` file is not present in the archive'
+	},
+	{
+		name: 'repairable-spreadsheet',
+		description: 'A spreadsheet having sloppy mistakes in the markup could still be repaired'
 	}
 ]

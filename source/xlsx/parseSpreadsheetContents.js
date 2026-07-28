@@ -3,22 +3,81 @@ import parseFilePaths from './parseFilePaths.js'
 import parseStyles from './parseStyles.js'
 import parseSharedStrings from './parseSharedStrings.js'
 import parseSheet from './parseSheet.js'
-import parseNumberDefault from './parseNumber.js'
 
-import checkpoint, { latestCheckpointTimestamp } from '../utility/checkpoint.js'
+import convertValuesFromUint8ArraysToStrings from '../utility/convertValuesFromUint8ArraysToStrings.js'
+import checkpoint from '../utility/checkpoint.js'
 import isPromise from '../utility/isPromise.js'
 
-// For an introduction in reading `.xlsx` files see "The minimum viable XLSX reader":
-// https://www.brendanlong.com/the-minimum-viable-xlsx-reader.html
+import InvalidSpreadsheetError from './InvalidSpreadsheetError.js'
+import SheetNotFoundError from './SheetNotFoundError.js'
+
+// These exports are only used in `worker-f` dependencies:
+// import parseXmlStream '../xml/parseXmlStream.js'
+// import { decodeUtf8String, strFromU8 } from '../utility/convertValuesFromUint8ArraysToStrings.js'
+// import parseExcelDate from './parseExcelDate.js'
+// import parseExcelTimestamp from './parseExcelTimestamp.js'
+// import isDateFormat, { DATE_FORMAT_SPECIFIC_LOCALE_PREFIX, DATE_FORMAT_ALLOW_ANY_OTHER_TEXT_SUFFIX, IS_DATE_FORMAT_CACHE, DATE_TEMPLATE_TOKENS } from './isDateFormat.js'
+// import isDateFormatStyle, { BUILT_IN_DATE_FORMAT_IDS } from './isDateFormatStyle.js'
+// import parseCell, { EMPTY_CELL } from './parseCell.js'
+// import parseCellAddress, { LETTERS } from './parseCellAddress.js'
+// import convertArrayOfCellsTo2dArrayOfValues from './convertArrayOfCellsTo2dArrayOfValues.js'
+// import dropEmptyTrailingRows from './dropEmptyTrailingRows.js'
+// import dropEmptyTrailingColumns from './dropEmptyTrailingColumns.js'
+// import { latestCheckpointTimestamp } from '../utility/checkpoint.js'
+
+// `worker-f` is not used because passing cells data from the worker thread
+// to the main thread was a lengthy-enough operation. For example, when running
+// the benchmark, the output latency was: `10` ms on "1mb.xlsx", `70` ms on "10mb.xlsx"
+// and `500` ms on "50mb.xlsx", meaning that it would still have issues with
+// blocking the main thread when passing the result back to it from the worker thread,
+// negating the effect of using `worker-f` in the first place.
+//
+// As a way to work around the slow "structured clone" algorithm for input/output data,
+// I played around with implementing a `serializeCells()` function that would serialize
+// sheet data into an `ArrayBuffer` in order for it to be "transferred" instantly
+// to the main thread, but this serialization itself was even slower, meaning that it would
+// still block the main thread when deserializing that `ArrayBuffer` back to sheet data,
+// so the entire idea of using `worker-f` was eventually dismissed.
+//
+// Instead of that, I submitted a PR in `saxen` repo that added "streaming mode" to the XML parser.
+// https://github.com/nikku/saxen/pull/27
+// That PR got merged, so a simple alternative now is to parse sheet data chunk-by-chunk,
+// spacing it out with `setTimeout(0)` interrupts.
+//
+// In case of re-enabling `worker-f`, uncomment the relevant code above and below,
+// and also replace `import { Parser } from 'saxen'` with an copy-paste of `saxen`'s code
+// in `parseXmlStream.saxen.js`, otherwise it'll throw: "Parser is not defined".
+// Also, in `convertValuesFromUint8ArraysToStrings.js`, replace `import { strFromU8 } from 'fflate'`
+// with a copy-paste of the `strFromU8()` function code from `fflate`'s repo,
+// because otherwise it'd throw: "td is not defined".
+//
+const CAN_USE_WORKER = false
 
 /**
  * Reads data from an `.xlsx` file.
- * @param  {function} parseXmlStream — SAX XML parser.
- * @param  {Record<string,string>} contents - A map of `.xml` files inside the `.xlsx` file (which itself is just a zipped directory).
+ * @param  {function} parseXml — SAX XML parser.
+ * @param  {Record<string,Uint8Array>} contents - A map of `.xml` files inside the `.xlsx` file (which itself is just a zipped directory).
  * @param  {object} [options]
  * @return {Promise<Sheet[]>}
  */
-function parseSpreadsheetContents(parseXmlStream, contents, options = {}) {
+function parseSpreadsheetContents(parseXml, contents_, options = {}) {
+  // For an introduction in reading `.xlsx` files see "The minimum viable XLSX reader":
+  // https://www.brendanlong.com/the-minimum-viable-xlsx-reader.html
+
+  // Convert the values in `contents_` from `Uint8Array`s to `string`s.
+  //
+  // This function is a bit of a bottleneck on large `.xlsx` files.
+  // For example, when running the benchmark, the time of calling this function is:
+  //
+  // * "1mb.xlsx" — 2
+  // * "10mb.xlsx" — 7
+  // * "50mb.xlsx" — 35
+  //
+  // When running this code in a worker, it's no longer a "bottleneck"
+  // because in that case it doesn't block the main thread.
+  //
+  const contents = convertValuesFromUint8ArraysToStrings(contents_)
+
   // Because of how `.xlsx` file contents are defined in the specification,
   // it will have to be read in 3 passes:
   // * First pass — read the actual file paths
@@ -31,7 +90,7 @@ function parseSpreadsheetContents(parseXmlStream, contents, options = {}) {
   return readFiles(
     getXmlFilesAtFixedPaths(),
     contents,
-    parseXmlStream
+    parseXml
   ).then(({ spreadsheetInfo, filePaths }) => {
     checkpoint('parse "shared strings" and "styles"')
 
@@ -39,7 +98,7 @@ function parseSpreadsheetContents(parseXmlStream, contents, options = {}) {
     return readFiles(
       getXmlFilesAtNonFixedPaths(filePaths),
       contents,
-      parseXmlStream
+      parseXml
     ).then(({ sharedStrings, styles }) => {
       const sheetRelationIdsToRead = options.sheets
         ? options.sheets.map(sheet => getSheetRelationId(sheet, spreadsheetInfo.sheets))
@@ -56,7 +115,7 @@ function parseSpreadsheetContents(parseXmlStream, contents, options = {}) {
           options
         }),
         contents,
-        parseXmlStream
+        parseXml
       ).then((sheetsData) => {
         checkpoint('end')
         // Return sheets data.
@@ -72,92 +131,95 @@ function parseSpreadsheetContents(parseXmlStream, contents, options = {}) {
 /**
  * Reads data from an `.xlsx` file in a worker.
  * @param  {function} [createWorkerFunction] — Creates a worker function.
- * @param  {function} parseXmlStream — SAX XML parser.
- * @param  {Record<string,string>} contents - A map of `.xml` files inside the `.xlsx` file (which itself is just a zipped directory).
+ * @param  {function} parseXml — SAX XML parser.
+ * @param  {Record<string,Uint8Array>} contents - A map of `.xml` files inside the `.xlsx` file (which itself is just a zipped directory).
  * @param  {object} [options]
  * @return {Promise<Sheet[]>}
  */
-export default function parseSpreadsheetContentsInWorker(createWorkerFunction, parseXmlStream, contents, options) {
-  // Assign the default `parseNumber()` function in the `options`.
+export default function parseSpreadsheetContentsInWorker(createWorkerFunction, parseXml, contents, options) {
+  // Assign a default value of `null` to `parseNumber()` function in the `options`.
   // The reason is that the worker code requires it to be non-`undefined`.
   // Otherwise, it would throw "parseNumber is not defined".
   if (!(options && options.parseNumber)) {
     options = {
       ...options,
-      parseNumber: parseNumberDefault
+      parseNumber: null
     }
   }
-
-  // Using a worker requires specifying all the top-level variables or functions that it uses.
-  // Currently, that list looks a little bit too long so for now workers aren't used for parsing sheet data.
-  // See the comment in `createWorkerFunction()` call for more details.
-  // createWorkerFunction = undefined
 
   // If the environment doesn't support "workers", parse spreadsheet contents "synchronously".
   // This will "block" the main thread while parsing.
-  if (!createWorkerFunction) {
-    return parseSpreadsheetContents(parseXmlStream, contents, options)
+  if (!createWorkerFunction || !CAN_USE_WORKER) {
+    return parseSpreadsheetContents(parseXml, contents, options)
   }
 
-  // Any functions have to be removed from the `options` in order for them to be "serializable"
-  // before sending them to the worker thread.
-  const { parseNumber, ...optionsJson } = options
-
-  // Create a worker.
-  const workerFn = createWorkerFunction(
-    (data) => {
-      // Reconstruct the `options`.
-      const options = {
-        ...data.optionsJson,
-        parseNumber
-      }
-      // Parse sheet data from the `.xml` files.
-      return parseSpreadsheetContents(parseXmlStream, data.contents, options)
-    }
-  )
-
-  workerFn.addDependencies(
-    // Any "outside" dependencies that're referenced in the function (below).
-    () => [
-      parseXmlStream,
-      parseNumber,
-      parseSpreadsheetContents,
-      getSheetRelationId,
-      getSheetNameByRelationId,
-      getXmlFilesAtFixedPaths,
-      getXmlFilesAtNonFixedPaths,
-      getSheetDataXmlFiles,
-      readFiles,
-      checkpoint,
-      latestCheckpointTimestamp,
-      isPromise,
-      // parseSheet,
-      //
-      // This is not the full list by any means. There's more. Quite a lot more of them.
-      // It started looking a bit too much so I stopped adding the dependencies here.
-      // Now I understand why `fflate`'s source code is all written in a single
-      // multi-thousand-line `index.ts` file. The thing is, once one starts splitting
-      // the code into modules, they'd have to manually export any top-level variables
-      // or functions from those modules and import them here in order to specify them
-      // in the list of dependencies. And even if doing so for every top-level variable
-      // or function in every imported module doesn't seem like an impossible task,
-      // imagine someone refactoring the code later and extracting new top-level
-      // variables or functions. Without 100% code coverage requirement, it won't be caught
-      // at build time and can only be caught in production, which isn't ideal to say the least.
-      // So it seems like users of this package will have to just deal with the "blocking"
-      // nature of the sheet data parser, because I won't follow into `fflate`'s steps
-      // and rewrite this package as a single `index.js` file.
-      // Users of this package will have to manually put their code in a worker
-      // in case they'd prefer it to run in a separate thread to prevent "blocking"
-      // the main thread when parsing sheet data.
-    ]
-  )
-
-  // Post a message with some data to the worker
-  // so that it starts processing the data
-  // and later posts a message back to the main thread
-  // with the result of the calculation.
-  return workerFn.callOnce({ optionsJson, contents }) // (optional) add `transferList` argument.
+  // // Any functions have to be removed from the `options` in order for them to be "serializable"
+  // // before sending them to the worker thread.
+  // const { parseNumber: parseNumber_, ...optionsJson } = options
+  //
+  // // Create a worker from a function.
+  // const workerFn = createWorkerFunction(
+  //   (data) => {
+  //     // Reconstruct the `options`.
+  //     const options = {
+  //       ...data.optionsJson,
+  //       parseNumber: parseNumber_
+  //     }
+  //     // Parse sheet data from the `.xml` files.
+  //     return parseSpreadsheetContents(parseXml, data.contents, options)
+  //   }
+  // )
+  //
+  // workerFn.addDependencies(
+  //   // Any "outside" dependencies that're referenced from the function body.
+  //   () => [
+  //     parseXml,
+  //     parseXmlStream,
+  //     parseNumber,
+  //     parseNumber_,
+  //     parseExcelDate,
+  //     parseExcelTimestamp,
+  //     parseCell,
+  //     EMPTY_CELL,
+  //     parseCellAddress,
+  //     LETTERS,
+  //     convertArrayOfCellsTo2dArrayOfValues,
+  //     convertValuesFromUint8ArraysToStrings,
+  //     strFromU8,
+  //     decodeUtf8String,
+  //     dropEmptyTrailingRows,
+  //     dropEmptyTrailingColumns,
+  //     isDateFormat,
+  //     DATE_FORMAT_SPECIFIC_LOCALE_PREFIX,
+  //     DATE_FORMAT_ALLOW_ANY_OTHER_TEXT_SUFFIX,
+  //     IS_DATE_FORMAT_CACHE, DATE_TEMPLATE_TOKENS,
+  //     isDateFormatStyle,
+  //     BUILT_IN_DATE_FORMAT_IDS,
+  //     parseSpreadsheetContents,
+  //     parseFilePaths,
+  //     parseSpreadsheetInfo,
+  //     parseSharedStrings,
+  //     parseStyles,
+  //     parseSheet,
+  //     getSheetRelationId,
+  //     getSheetNameByRelationId,
+  //     getXmlFilesAtFixedPaths,
+  //     getXmlFilesAtNonFixedPaths,
+  //     getSheetDataXmlFiles,
+  //     readFiles,
+  //     checkpoint,
+  //     latestCheckpointTimestamp,
+  //     isPromise
+  //   ]
+  // )
+  //
+  // workerFn.inputTransferList(({ optionsJson, contents }) => Object.keys(contents).map(key => contents[key].buffer))
+  //
+  // return workerFn.callOnce({ optionsJson, contents }).then((result) => {
+  //   console.log('~ Input latency', workerFn.inputLatency)
+  //   console.log('~ Output latency', workerFn.outputLatency)
+  //   return result
+  // })
 }
 
 function getSheetRelationId(sheet, sheets) {
@@ -167,12 +229,12 @@ function getSheetRelationId(sheet, sheets) {
         return _sheet.relationId
       }
     }
-		throw new Error(`Sheet "${sheet}" not found. Available sheets: ${sheets.map(({ name }) => `"${name}"`).join(', ')}`)
+		throw new SheetNotFoundError(`Sheet "${sheet}" not found. Available sheets: ${sheets.map(({ name }) => `"${name}"`).join(', ')}`)
   } else {
 		if (sheet <= sheets.length) {
       return sheets[sheet - 1].relationId
     }
-    throw new Error(`Sheet number out of bounds: ${sheet}. Available sheets count: ${sheets.length}`)
+    throw new SheetNotFoundError(`Sheet number out of bounds: ${sheet}. Available sheets count: ${sheets.length}`)
   }
 }
 
@@ -182,6 +244,10 @@ function getSheetNameByRelationId(sheetRelationId, sheets) {
       return sheet.name
     }
   }
+  // The only way of getting `sheetRelationId` here is from the `sheets`,
+  // so this error is not technically possible. And if it is thrown
+  // then it means that there's a bug in the code because it's not
+  // supposed to get `sheetRelationId` from anywhere other than the `sheets`.
   throw new Error(`Sheet relation ID not found: ${sheetRelationId}`)
 }
 
@@ -234,7 +300,7 @@ function getSheetDataXmlFiles(filePaths, sheetRelationIdsToRead, sheetDataParser
       [filePaths.sheets[sheetRelationId]]: {
         name: sheetRelationId,
         // `parseSheet()` returns a `Promise`.
-        parse: (content, parseXmlStream) => parseSheet(content, parseXmlStream, sheetDataParserParameters)
+        parse: (content, parseXml) => parseSheet(content, parseXml, sheetDataParserParameters)
       }
     }), {})
 }
@@ -261,7 +327,7 @@ function getSheetDataXmlFiles(filePaths, sheetRelationIdsToRead, sheetDataParser
 // * If none of the `parse()` functions returned a `Promise`, it returns a map of files' contents.
 // * If any of the `parse()` functions returned a `Promise`, it returns a `Promise` that resolves to a map of files' contents.
 //
-function readFiles(filesInfo, contents, parseXmlStream) {
+function readFiles(filesInfo, contents, parseXml) {
   // Get files' contents.
   const results = {}
   for (const filePath of Object.keys(filesInfo)) {
@@ -269,10 +335,10 @@ function readFiles(filesInfo, contents, parseXmlStream) {
     results[fileInfo.name] = contents[filePath] === undefined
       ? (
         fileInfo.fallback === undefined
-          ? (() => { throw new Error(`"${filePath}" file not found inside the \`.xlsx\` file`) })()
+          ? (() => { throw new InvalidSpreadsheetError(`"${filePath}" file not found inside the \`.xlsx\` file`) })()
           : fileInfo.fallback
       )
-      : fileInfo.parse(contents[filePath], parseXmlStream)
+      : fileInfo.parse(contents[filePath], parseXml)
   }
   // Resolve any `Promise`s.
   const promises = []

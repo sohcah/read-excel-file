@@ -6,28 +6,27 @@
 
 import isDateFormat from './isDateFormat.js'
 
-export default function isDateFormatStyle(styleId, styles, options) {
-  if (styleId !== undefined) {
-    const style = styles[styleId]
-    if (!style) {
-      throw new Error(`Cell style not found: ${styleId}`)
-    }
-    if (!style.numberFormat) {
-      return false
-    }
-    if (
-      // Whether it's a "number format" that's conventionally used for storing date timestamps.
-      BUILT_IN_DATE_FORMAT_IDS.indexOf(style.numberFormat.id) >= 0 ||
-      // Whether it's a "number format" that uses a "formatting template"
-      // that the developer is certain is a date formatting template.
-      (options.dateFormat && style.numberFormat.template === options.dateFormat) ||
-      // Whether the "smart formatting template" feature is not disabled
-      // and it has detected that it's a date formatting template by looking at it.
-      (options.smartDateParser !== false && style.numberFormat.template && isDateFormat(style.numberFormat.template))
-     ) {
-      return true
-    }
+export default function isDateFormatStyle(
+  style,
+  defaultDateFormat,
+  shouldGuessDateFormatFromNumberFormatTemplate
+) {
+  if (!style.numberFormat) {
+    return false
   }
+  if (
+    // Whether it's a "number format" that's conventionally used for storing date timestamps.
+    BUILT_IN_DATE_FORMAT_IDS.indexOf(style.numberFormat.id) >= 0 ||
+    // Whether it's a "number format" that uses a "formatting template"
+    // that the developer is certain is a date formatting template.
+    (defaultDateFormat && style.numberFormat.template === defaultDateFormat) ||
+    // Whether the "smart formatting template" feature is not disabled
+    // and it has detected that it's a date formatting template by looking at it.
+    (shouldGuessDateFormatFromNumberFormatTemplate && style.numberFormat.template && isDateFormat(style.numberFormat.template))
+    ) {
+    return true
+  }
+  return false
 }
 
 // Built-in formats have ID < 164.
@@ -118,8 +117,10 @@ const THAI_LOCALE_BUILT_IN_DATE_FORMAT_IDS = [
   81  // d/m/bb
 ]
 
+// This is exported only to be passed in `worker-f` dependencies.
+//
 // Start with language-agnostic date format IDs.
-const BUILT_IN_DATE_FORMAT_IDS = LOCALE_INDEPENDENT_BUILT_IN_DATE_FORMAT_IDS.concat(
+export const BUILT_IN_DATE_FORMAT_IDS = LOCALE_INDEPENDENT_BUILT_IN_DATE_FORMAT_IDS.concat(
   // Add Mainland Chinese or Taiwanese date format IDs that haven't already been added.
   MAINLAND_CHINESE_OR_TAIWANESE_LOCALE_BUILT_IN_DATE_FORMAT_IDS
 ).concat(

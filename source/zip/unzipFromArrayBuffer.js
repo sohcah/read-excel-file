@@ -6,6 +6,8 @@
 //
 import { unzip } from 'fflate'
 
+import { createUnzipError } from './UnzipError.js'
+
 /**
  * Reads `*.zip` file contents. Ignores anything besides `.xml` or `.xml.rels` files.
  * @param  {ArrayBuffer} input
@@ -20,7 +22,7 @@ export default function unzipFromArrayBuffer(input, options) {
  * @param  {ArrayBuffer} input
  * @param  {(ArrayBuffer) => Record<string, Uint8Array> | Promise<Record<string, Uint8Array>>} unzip
  * @param  {boolean} isAsync — Should be `true` when `unzip()` returns a `Promise`, `false` otherwise.
- * @return {Promise<Record<string,Uint8Array>>|Record<string,Uint8Array>} Resolves to an object holding `*.zip` file entries.
+ * @return {Promise<Record<string,Uint8Array>> | Record<string,Uint8Array>} Resolves to an object holding `*.zip` file entries.
  */
 export function unzipFromArrayBufferUsingFunction(input, { filter } = {}, unzip, isAsync) {
 	// Read the `.zip` archive.
@@ -35,7 +37,17 @@ export function unzipFromArrayBufferUsingFunction(input, { filter } = {}, unzip,
 			}
 			return true
 		}
-	})
+	}).then(
+		result => result,
+		(error) => {
+			// If `fflate` throws its specific error then it implies that the `.zip` file is not valid.
+			if (isFlateError(error)) {
+				throw createUnzipError(error)
+			} else {
+				throw error
+			}
+		}
+	)
 }
 
 function unzipAsync(archive) {
@@ -51,4 +63,14 @@ function unzipAsync(archive) {
       }
     })
   })
+}
+
+// This function attempts to guess if a given `error` was thrown by `fflate`.
+function isFlateError(error) {
+	// `fflate` doesn't export a `FlateError` class.
+	// https://github.com/101arrowz/fflate/issues/290
+	// return error instanceof FlateError
+
+	// Here, it attempts to guess if an `error` is a `FlateError` by checking if `error.code` is a `number`.
+	return typeof error.code === 'number'
 }

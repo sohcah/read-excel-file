@@ -1,3 +1,12 @@
+9.3.5 / 28.07.2026
+==================
+
+* Merged a [feature](https://gitlab.com/catamphetamine/read-excel-file/-/merge_requests/11) by [Etienne Prothon](https://github.com/EtienneProthon). If adds a new exported error class called `InvalidInputError`. See the "Errors" section of the README for more details.
+
+* Added two additional error classes: `InvalidSpreadsheetError` and `SheetNotFoundError`.
+
+* Addressed a [concern](https://gitlab.com/catamphetamine/read-excel-file/-/work_items/118) expressed by [Olivier Beaulieu](https://github.com/olivierb24) about the `.xlsx` parser being too strict and not forgiving. The `sheet.xml` file parser has been slightly refactored to be less strict about `<v>`  or `<is><t>` elements not being present.
+
 9.3.3 / 20.07.2026
 ==================
 

@@ -1,5 +1,8 @@
 export { default as default } from '../modules/export/readXlsxFileUniversal.js'
 export { default as readSheet } from '../modules/export/readSheetUniversal.js'
+export { default as InvalidInputError } from '../modules/xlsx/file/InvalidInputError.js'
+export { default as InvalidSpreadsheetError } from '../modules/xlsx/InvalidSpreadsheetError.js'
+export { default as SheetNotFoundError } from '../modules/xlsx/SheetNotFoundError.js'
 
 // `parseSheetData()`
 export { default as parseSheetData } from '../modules/parseSheetData/parseSheetData.js'

@@ -6,6 +6,9 @@ import DateType from './types/Date.js'
 import isObject from '../utility/isObject.js'
 import checkpoint from '../utility/checkpoint.js'
 
+// An empty cell has `null` value.
+const EMPTY_CELL_VALUE = null
+
 /**
  * Converts spreadsheet-alike data structure into an array of JSON objects.
  *
@@ -310,7 +313,7 @@ function parseCellValue(cellValue, schemaEntry, options) {
     }
   }
 
-  if (cellValue === null) {
+  if (cellValue === EMPTY_CELL_VALUE) {
     return {
       value: options.propertyValueWhenCellIsEmpty,
       isEmptyValue: true
@@ -402,9 +405,9 @@ function parseArrayValue(value, schemaEntry, options) {
  */
 export function parseValue(value, schemaEntry, options) {
   // `null` values (i.e. empty cells) don't get parsed.
-  if (value === null) {
+  if (value === EMPTY_CELL_VALUE) {
     return {
-      value: null,
+      value,
       isEmptyValue: true
     }
   }
@@ -436,9 +439,9 @@ export function parseValue(value, schemaEntry, options) {
   }
 
   // If the parsed value is empty, return it.
-  if (value === null) {
+  if (value === EMPTY_CELL_VALUE) {
     return {
-      value: null,
+      value,
       isEmptyValue: true
     }
   }
@@ -516,7 +519,7 @@ function parseValueUsingTypeParser(value, type) {
     const parsedValue = type(value)
     // Returning `undefined` from a `type` parser is treated as returning `null`.
     if (parsedValue === undefined) {
-      return { value: null }
+      return { value: EMPTY_CELL_VALUE }
     }
     return { value: parsedValue }
   } catch (error) {

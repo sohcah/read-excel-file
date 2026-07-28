@@ -1217,6 +1217,6 @@ function Parser(options) {
 
 }
 
-return Parser(options);
+return new Parser(options);
 
 }

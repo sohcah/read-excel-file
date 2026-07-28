@@ -1,10 +1,10 @@
 import { describe, it } from 'mocha'
 import { expect } from 'chai'
 
-import readXlsxFileBrowser, { parseSheetData as parseSheetDataBrowser, readSheet as readSheetBrowser } from '../../browser/index.js'
-import readXlsxFileWebWorker, { parseSheetData as parseSheetDataWebWorker, readSheet as readSheetWebWorker } from '../../web-worker/index.js'
-import readXlsxFileNode, { parseSheetData as parseSheetDataNode, readSheet as readSheetNode } from '../../node/index.js'
-import readXlsxFileUniversal, { parseSheetData as parseSheetDataUniversal, readSheet as readSheetUniversal } from '../../universal/index.js'
+import readXlsxFileBrowser, { parseSheetData as parseSheetDataBrowser, readSheet as readSheetBrowser, InvalidInputError as InvalidInputErrorBrowser } from '../../browser/index.js'
+import readXlsxFileWebWorker, { parseSheetData as parseSheetDataWebWorker, readSheet as readSheetWebWorker, InvalidInputError as InvalidInputErrorWebWorker } from '../../web-worker/index.js'
+import readXlsxFileNode, { parseSheetData as parseSheetDataNode, readSheet as readSheetNode, InvalidInputError as InvalidInputErrorNode } from '../../node/index.js'
+import readXlsxFileUniversal, { parseSheetData as parseSheetDataUniversal, readSheet as readSheetUniversal, InvalidInputError as InvalidInputErrorUniversal } from '../../universal/index.js'
 
 import BrowserCommonJs from '../../browser/index.cjs'
 import WebWorkerCommonJs from '../../web-worker/index.cjs'
@@ -17,21 +17,25 @@ describe(`exports`, () => {
 		expect(readXlsxFileBrowser).to.be.a('function')
 		expect(parseSheetDataBrowser).to.be.a('function')
 		expect(readSheetBrowser).to.be.a('function')
+		expect(InvalidInputErrorBrowser).to.be.a('function')
 
 		// Web Worker
 		expect(readXlsxFileWebWorker).to.be.a('function')
 		expect(parseSheetDataWebWorker).to.be.a('function')
 		expect(readSheetWebWorker).to.be.a('function')
+		expect(InvalidInputErrorWebWorker).to.be.a('function')
 
 		// Node.js
 		expect(readXlsxFileNode).to.be.a('function')
 		expect(parseSheetDataNode).to.be.a('function')
 		expect(readSheetNode).to.be.a('function')
+		expect(InvalidInputErrorNode).to.be.a('function')
 
 		// Universal
 		expect(readXlsxFileUniversal).to.be.a('function')
 		expect(parseSheetDataUniversal).to.be.a('function')
 		expect(readSheetUniversal).to.be.a('function')
+		expect(InvalidInputErrorUniversal).to.be.a('function')
 	})
 
 	it(`should export CommonJS`, () => {
@@ -41,6 +45,7 @@ describe(`exports`, () => {
 		expect(BrowserCommonJs.default).to.be.a('function')
 		expect(BrowserCommonJs.parseSheetData).to.be.a('function')
 		expect(BrowserCommonJs.readSheet).to.be.a('function')
+		expect(BrowserCommonJs.InvalidInputError).to.be.a('function')
 
 		// Web Worker.
 
@@ -48,6 +53,7 @@ describe(`exports`, () => {
 		expect(WebWorkerCommonJs.default).to.be.a('function')
 		expect(WebWorkerCommonJs.parseSheetData).to.be.a('function')
 		expect(WebWorkerCommonJs.readSheet).to.be.a('function')
+		expect(WebWorkerCommonJs.InvalidInputError).to.be.a('function')
 
 		// Node.js
 
@@ -55,6 +61,7 @@ describe(`exports`, () => {
 		expect(NodeCommonJs.default).to.be.a('function')
 		expect(NodeCommonJs.parseSheetData).to.be.a('function')
 		expect(NodeCommonJs.readSheet).to.be.a('function')
+		expect(NodeCommonJs.InvalidInputError).to.be.a('function')
 
 		// Universal
 
@@ -62,5 +69,6 @@ describe(`exports`, () => {
 		expect(UniversalCommonJs.default).to.be.a('function')
 		expect(UniversalCommonJs.parseSheetData).to.be.a('function')
 		expect(UniversalCommonJs.readSheet).to.be.a('function')
+		expect(UniversalCommonJs.InvalidInputError).to.be.a('function')
 	})
 })

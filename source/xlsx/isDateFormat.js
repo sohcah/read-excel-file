@@ -10,7 +10,9 @@
 // * "[$-ru-RU]dd.mm.yyyy;@"
 // * "[$-x-sysdate]dddd, mmmm dd, yyyy"
 //
-const DATE_FORMAT_SPECIFIC_LOCALE_PREFIX = /^\[\$-[^\]]+\]/
+// This is exported only to be specified in `worker-f` dependencies.
+//
+export const DATE_FORMAT_SPECIFIC_LOCALE_PREFIX = /^\[\$-[^\]]+\]/
 
 // On some date formats, there's a ";@" suffix.
 // It instructs the spreadsheet editor application to display any non-numeric
@@ -33,20 +35,19 @@ const DATE_FORMAT_SPECIFIC_LOCALE_PREFIX = /^\[\$-[^\]]+\]/
 // * "m/d/yyyy;@"
 // * "[$-414]mmmm\ yyyy;@"
 //
-const DATE_FORMAT_ALLOW_ANY_OTHER_TEXT_SUFFIX = /;@$/
+// This is exported only to be specified in `worker-f` dependencies.
+//
+export const DATE_FORMAT_ALLOW_ANY_OTHER_TEXT_SUFFIX = /;@$/
 
-const CACHE = {}
+// This is exported only to be specified in `worker-f` dependencies.
+//
+export const IS_DATE_FORMAT_CACHE = {}
 
 export default function isDateFormatCached(template) {
-	if (template in CACHE) {
-		return CACHE[template]
+	if (template in IS_DATE_FORMAT_CACHE) {
+		return IS_DATE_FORMAT_CACHE[template]
 	}
-	const result = isDateFormat(template)
-	CACHE[template] = result
-	return result
-}
 
-function isDateFormat(template) {
   // Date format tokens could be in upper case or in lower case.
   // There seems to be no single standard.
   // So the template is lowercased first.
@@ -65,27 +66,29 @@ function isDateFormat(template) {
   // Example: "mm/dd/yyyy" → ["mm", "dd", "yyyy"]
   const tokens = template.split(/\W+/)
 
-  // If no alphabetic parts are present in what's left from the template string
-  // then it could be any kind of template such as a generic numeric template
-  // such as "$#,##0.00" currency template or "0.0%" percentage template.
-  if (tokens.length < 0) {
-    return false
-  }
-
-  for (const token of tokens) {
+  const result = tokens.length === 0
+    // If no alphabetic parts are present in what's left from the template string
+    // then it could be any kind of template such as a generic numeric template
+    // such as "$#,##0.00" currency template or "0.0%" percentage template.
+    ? false
     // If a non-date-format-specific alphabetic substring is found,
-    // this might not necessarily be a date format.
-    if (DATE_TEMPLATE_TOKENS.indexOf(token) < 0) {
-      return false
-    }
-  }
+    // then it might be not necessarily a date format.
+    // In order to make a certain guess, all tokens have to represent viable parts of a date format.
+    : tokens.every(token => DATE_TEMPLATE_TOKENS.indexOf(token) >= 0)
 
-  return true
+  // Cache the result
+  IS_DATE_FORMAT_CACHE[template] = result
+
+  // Return the result
+  return result
 }
 
 // These tokens could be in upper case or in lower case.
 // There seems to be no single standard, so using lower case.
-const DATE_TEMPLATE_TOKENS = [
+//
+// This is exported only to be specified in `worker-f` dependencies.
+//
+export const DATE_TEMPLATE_TOKENS = [
   // Seconds (min two digits). Example: "05".
   'ss',
   // Minutes (min two digits). Example: "05". Could also be "Months". Weird.
@@ -122,4 +125,4 @@ const DATE_TEMPLATE_TOKENS = [
   // * 50 '[$-404]e/m/d';
   // * 57 '[$-404]e/m/d';
   'e'
-];
+]

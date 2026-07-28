@@ -64,4 +64,120 @@
 //   when compared to `zipSync`/`unzipSync`/`zip`/`unzip` functions.
 //   https://github.com/101arrowz/fflate/issues/282
 //
-export { default as default } from './unzipFromStream.unzipper.js'
+import unzipFromStream_ from './unzipFromStream.unzipper.js'
+
+/**
+ * Reads `*.zip` file contents.
+ * @param  {Stream} stream
+ * @return {Promise<Record<string,Buffer>>} Resolves to an object holding `*.zip` file entries. P.S. `Buffer` is a `Uint8Array`.
+ */
+export default function unzipFromStream(stream, { filter } = {}) {
+	// The `files` object stores the files and their contents.
+	const files = {}
+	const filesData = {}
+
+	// `fileSize` is optional and will not be present for `.zip` archives
+	// that were created in a streaming fashion.
+	const onFile = (filePath, fileSize) => {
+		// See if this file should be ignored.
+		// If it should, this entry won't be processed, i.e. `Unzip` will not try
+		// to decompress its data, and will just discard it.
+		if (filter && !filter({ path: filePath })) {
+			return false
+		}
+		// filesData[filePath] = []
+		filesData[filePath] = {
+			size: fileSize,
+			chunks: [],
+			buffer: fileSize === undefined ? undefined : Buffer.alloc(fileSize),
+			position: 0
+		}
+	}
+
+	const onFileData = (filePath, chunk) => {
+		// filesData[filePath].push(chunk)
+		if (filesData[filePath].size === undefined) {
+			filesData[filePath].chunks.push(chunk)
+		} else {
+			filesData[filePath].position += chunk.copy(filesData[filePath].buffer, filesData[filePath].position)
+		}
+	}
+
+	const onFileDataEnd = (filePath) => {
+		if (filesData[filePath].size === undefined) {
+			// // `Buffer.concat()` will produce a pooled buffer if it's <= 4KB.
+			// let buffer = Buffer.concat(filesData[filePath].chunks)
+			// if (isBufferPooled(buffer)) {
+			// 	// Here it uses `Buffer.allocUnsafeSlow()` instead of the regular `Buffer.alloc()`.
+			// 	// The reason is that `Buffer.allocUnsafeSlow()` doesn't bother resetting the memory
+			// 	// that is being allocated, which is fine because it will be overwritten anyway.
+			// 	// It could also have used `Buffer.allocUnsafe()` if it wasn't returning pooled buffers,
+			// 	// which is what is being avoided here in the first place.
+			// 	const pooledBuffer = buffer
+			// 	buffer = Buffer.allocUnsafeSlow(buffer.byteLength)
+			// 	pooledBuffer.copy(buffer)
+			// }
+			// files[filePath] = buffer
+			files[filePath] = concatChunksToNonPooledBuffer(filesData[filePath].chunks)
+		} else {
+			files[filePath] = filesData[filePath].buffer
+		}
+		delete filesData[filePath]
+	}
+
+	return unzipFromStream_(stream, onFile, onFileData, onFileDataEnd)
+		.then(() => files)
+}
+
+// // Node.js allocates small buffers (<= 4KB) in a shared 8KB pool.
+// // This interferes with passing such buffers to another worker thread.
+// // In order for a buffer to be transferrable to another worker thread,
+// // it has to be non-pooled.
+// function isBufferPooled(buffer) {
+// 	// If it doesn't utilize the full underlying `ArrayBuffer`, it's sliced out of a pool.
+// 	if (buffer.byteOffset > 0) {
+// 		return true
+// 	}
+//
+// 	// If it starts at `0`, but the underlying allocation is larger than the buffer itself, it's pooled/
+// 	if (buffer.buffer.byteLength > buffer.byteLength) {
+// 		return true
+// 	}
+//
+// 	return false
+// }
+
+// Concatenates chunks into a non-"pooled" buffer.
+//
+// It could've simply used `Buffer.concat(chunks)` to concatenate chunks into a buffer.
+// But, while using `Buffer.concat()` is simple, it results in a Node.js optimization
+// when it uses a "shared" memory region of about `8KB` to co-locate this array buffer
+// with other small array buffers if this array buffer is small too (i.e. <= `4KB`).
+//
+// Such co-location results in the inability to "transfer" this buffer
+// to a worker thread.
+//
+// A workaround is to manually allocate a separate memory region of a certain size.
+// This way, the resulting buffer will be non-"pooled".
+//
+function concatChunksToNonPooledBuffer(chunks) {
+	// Calculate the total byte length of all the chunks combined.
+	const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+
+	// Allocate a non-pooled buffer.
+	// Here it uses `Buffer.allocUnsafeSlow()` instead of the regular `Buffer.alloc()`.
+	// The reason is that `Buffer.allocUnsafeSlow()` doesn't bother resetting the memory
+	// that is being allocated, which is fine because it will be overwritten anyway.
+	// It could also have used `Buffer.allocUnsafe()` if it wasn't returning pooled buffers,
+	// which is what is being avoided here in the first place.
+	const buffer = Buffer.allocUnsafeSlow(totalLength)
+
+	// Manually copy each chunk into the buffer.
+	let offset = 0
+	for (const chunk of chunks) {
+		chunk.copy(buffer, offset)
+		offset += chunk.length
+	}
+
+	return buffer
+}

@@ -4,7 +4,9 @@ export default async function({ readSheetFromFile, readSheetsFromFile, expect })
 	expect(dataSheet1.length).to.equal(1)
 	expect(dataSheet1[0][0]).to.equal('First sheet')
 
-	// should read sheet by name (second)
+	// should read sheet by name (second).
+	// this second sheet is huge but it contains only blank cells
+	// except for the top-most left-most one.
 	const dataSheet2 = await readSheetFromFile('sheet 2')
 	expect(dataSheet2.length).to.equal(1)
 	expect(dataSheet2[0][0]).to.equal('Second sheet')

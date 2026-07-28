@@ -1,6 +1,6 @@
 {
   "name": "read-excel-file",
-  "version": "9.3.3",
+  "version": "9.3.5",
   "description": "Read `.xlsx` files in a web browser or in Node.js",
   "type": "module",
   "exports": {
@@ -46,8 +46,9 @@
   },
   "dependencies": {
     "fflate": "^0.8.3",
-    "unzipper-esm": "^0.13.2",
-    "saxen": "^11.0.2"
+    "saxen": "^11.1.0",
+    "unzipper-esm": "^0.13.3",
+    "worker-f": "^0.1.12"
   },
   "devDependencies": {
     "@babel/cli": "^7.17.10",
@@ -59,6 +60,7 @@
     "chai": "^4.3.6",
     "core-js": "^3.22.5",
     "cross-env": "^10.1.0",
+    "libphonenumber-js": "^1.13.8",
     "mocha": "^10.0.0",
     "npm-run-all": "^4.1.5",
     "rimraf": "^6.1.3",

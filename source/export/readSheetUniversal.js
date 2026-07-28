@@ -1,4 +1,4 @@
-import parseXmlStream from '../xml/parseXmlStream.js'
+import parseXml from '../xml/parseXml.js'
 import unpackXlsxFile from './unpackXlsxFileUniversal.js'
 
 import parseSheet from './parseSheet.js'
@@ -30,5 +30,5 @@ export default function readSheet(input, sheet, options) {
 		sheet = undefined
 	}
 	return unpackXlsxFile(input)
-		.then((contents) => parseSheet(createWorkerFunction, parseXmlStream, contents, sheet, options))
+		.then((contents) => parseSheet(createWorkerFunction, parseXml, contents, sheet, options))
 }

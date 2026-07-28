@@ -1,17 +1,17 @@
-// import createWorkerFunction from 'worker-f/browser'
-
-import parseXmlStream from '../xml/parseXmlStream.js'
-import unpackXlsxFile from './unpackXlsxFileBrowser.js'
-
-import parseSheet from './parseSheet.js'
-
 // Unzipper is multi-threaded and it spawns a separate worker for each individual file
 // inside the archive that is large-enough to justify spawning a worker.
+// Because it uses its own `Worker` implementation, it won't use `createWorkerFunction()`.
 //
 // XML parser is itself single-threaded but it could spawn a separate worker for each
 // individual `.xml` file that is large-enough to justify spawning a worker.
+// So it could use `createWorkerFunction()`.
 //
-const createWorkerFunction = undefined
+import createWorkerFunction from 'worker-f/browser'
+
+import parseXml from '../xml/parseXml.js'
+import unpackXlsxFile from './unpackXlsxFileBrowser.js'
+
+import parseSheet from './parseSheet.js'
 
 /**
  * Reads a single sheet from an `.xlsx` file.
@@ -28,5 +28,5 @@ export default function readSheet(input, sheet, options) {
 		sheet = undefined
 	}
 	return unpackXlsxFile(input)
-		.then((contents) => parseSheet(createWorkerFunction, parseXmlStream, contents, sheet, options))
+		.then((contents) => parseSheet(createWorkerFunction, parseXml, contents, sheet, options))
 }

@@ -1,7 +1,9 @@
 import unzipFromStream from '../zip/unzipFromStream.js'
+import UnzipError from '../zip/UnzipError.js'
+import InvalidInputError from '../xlsx/file/InvalidInputError.js'
 import convertInputToNodeStream from './convertInputToNodeStream.js'
-import convertValuesFromUint8ArraysToStrings from './convertValuesFromUint8ArraysToStrings.js'
 import filterZipArchiveEntry from './filterZipArchiveEntry.js'
+import InputValidationStream from '../xlsx/file/InputValidationStream.js'
 
 import checkpoint, { resetCheckpoint } from '../utility/checkpoint.js'
 
@@ -9,12 +11,41 @@ import checkpoint, { resetCheckpoint } from '../utility/checkpoint.js'
  * Unpacks `*.xlsx` file contents.
  * An `.xlsx` file is really just a `.zip` archive with `.xml` files inside.
  * @param  {(string|Stream|Buffer|Blob)} input
- * @return {Promise<Record<string,string>} Resolves to an object holding `*.xlsx` file entries.
+ * @return {Promise<Record<string,Uint8Array>} Resolves to an object holding `*.xlsx` file entries.
  */
 export default function unpackXlsxFile(input) {
   resetCheckpoint()
   checkpoint('unpack files')
   const stream = convertInputToNodeStream(input)
-  return unzipFromStream(stream, { filter: filterZipArchiveEntry })
-      .then(convertValuesFromUint8ArraysToStrings)
+  return new Promise((resolve, reject) => {
+    const streamWithInputValidation = stream
+      // Because the original `stream` reference is going to be replaced,
+      // while it still has that reference here, it should set up a listener
+      // to catch errors emitted from the input stream (for example, a file read error).
+      //
+      // That's because the .pipe() method does not automatically propagate errors
+      // from a source (input) stream to the destination stream or the end of the pipeline.
+      // You would need to attach an 'error' event handler to each stream in the chain.
+      //
+      // A more convenient alternative would be to use `stream.pipeline()` function:
+      // `pipeline(stream1, stream2, (error) => { ... })`
+      //
+      .on('error', reject)
+      // Pipe the input through file type validation stream.
+      // If the file type is invalid, the updated `stream` reference will emit
+      // an "error" event, which is going to be caught inside `unzipFromStream_()` function.
+      .pipe(new InputValidationStream())
+
+    unzipFromStream(streamWithInputValidation, { filter: filterZipArchiveEntry })
+      .then(
+        resolve,
+        (error) => {
+          if (error instanceof UnzipError) {
+            reject(new InvalidInputError('INVALID_ZIP', error.cause))
+          } else {
+            reject(error)
+          }
+        }
+      )
+  })
 }

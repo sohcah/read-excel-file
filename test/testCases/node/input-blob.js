@@ -1,5 +1,5 @@
 export default async function({ readFile, readSheet, expect }) {
-	const contentsBuffer = readFile()
+	const contentsBuffer = await readFile()
 
 	const contentsBlob = new Blob([contentsBuffer])
 
@@ -11,6 +11,12 @@ export default async function({ readFile, readSheet, expect }) {
 	])
 
 	// should handle empty blob input
-	const emptyBlob = new Blob()
-	expect(() => readSheet(emptyBlob)).to.throw('No data')
+	let thrown
+	try {
+		await readSheet(new Blob())
+	} catch (error) {
+		thrown = error
+	}
+	expect(thrown).to.be.an('error')
+	expect(thrown.code).to.equal('NO_DATA')
 }

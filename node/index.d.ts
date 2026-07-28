@@ -70,6 +70,22 @@ export type {
 	Schema
 } from '../types/parseSheetData/parseSheetDataSchema.d.js'
 
+export {
+	InvalidInputError
+} from '../types/InvalidInputError.d.js'
+
+export type {
+	InvalidInputErrorCode
+} from '../types/InvalidInputError.d.js'
+
+export {
+	InvalidSpreadsheetError
+} from '../types/InvalidSpreadsheetError.d.js'
+
+export {
+	SheetNotFoundError
+} from '../types/SheetNotFoundError.d.js'
+
 export default function readXlsxFile<ParsedNumber = number>(
 	input: Input,
 	options?: Options<ParsedNumber>

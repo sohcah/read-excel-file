@@ -36,5 +36,8 @@ npm-debug.log
 *.sublime-workspace
 *.sublime-project
 
+# Visual Studio Code
+.vscode/
+
 # benchmark
 /test/benchmark/*.xlsx

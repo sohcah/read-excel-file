@@ -2,35 +2,76 @@ import { Readable } from 'node:stream'
 
 import sax from 'sax'
 
-// For some strange reason, using "streaming" mode results in
+// For some strange reason, enabling "streaming" mode results in
 // quite a dramatic drop in performance.
 // For example, reading a `10 MB` `.xlsx` file in "streaming" mode is about `3.1` secs.
 // while in non-"streaming" mode it's about `1.4` secs.
 // Because of such strange performance issue, "streaming" mode is turned off.
 const STREAMING_MODE = false
 
-export default function parseXmlStream(xml, {
+/**
+ * Parses XML markup in a streaming fashion by calling the supplied callback functions as the XML markup is being input.
+ * @param {any} state — The initial `state`. This `state` will supposedly be modified by the callback functions as the XML is being parsed.
+ * @param {function} [onOpenTag]
+ * @param {function} [onCloseTag]
+ * @param {function} [onText]
+ * @returns {object} An object with properties: `promise`, `write(string)`, `end()`. The `promise` resolves with nothing.
+ */
+export default function parseXmlStream(
 	createInitialState,
 	onOpenTag,
 	onCloseTag,
 	onText
-}) {
-	return new Promise((resolve, reject) => {
-		let errored = false
+) {
+	// This `state` will be modified by the callback functions as the XML is being parsed.
+	const state = createInitialState()
 
-		const strict = true
-		const xmlns = true
+  let errored = false
+
+  const mustNotHaveErrored = () => {
+    if (errored) {
+      // If this error is thrown then it means that there's a bug in the code
+      // because the code should not have got here if the XML parsing process
+      // has already errored.
+      throw new Error('Errored')
+    }
+  }
+
+	const strict = true
+	const xmlns = true
+
+	const parser = STREAMING_MODE ? undefined : sax.parser(strict, parserOptions)
+
+	// This `stream` could be `.pipe()`d to:
+	// `Readable.from(xml).pipe(parserStream)`
+	const parserStream = STREAMING_MODE ? sax.createStream(strict, parserOptions) : undefined
+
+	// Inputs a chunk of XML.
+	const write = (xml) => {
+		mustNotHaveErrored()
+		parser.write(xml)
+	}
+
+	// No more chunks of XMl will be input.
+	const end = () => {
+		mustNotHaveErrored()
+		parser.close()
+	}
+
+	// This `promise` resolves with the final `state` when finished parsing.
+	const promise = new Promise((resolve, reject) => {
 		const parserOptions = { lowercase: true, xmlns }
 
 		const prefixedTagNameToUnprefixedTagName = {}
-		const state = createInitialState()
 
-		// an error happened.
+		// on XML parsing error
 		const onerror = (error) => {
 			if (errored) {
 				return
 			}
 			errored = true
+			// P.S. When the parser encounters an error, it halts until manually resumed.
+			// I.e. at this stage the parser is in halted state until manually resumed.
 			reject(error)
 		}
 
@@ -60,6 +101,11 @@ export default function parseXmlStream(xml, {
 			if (onCloseTag) {
 				const tagName = xmlns ? prefixedTagNameToUnprefixedTagName[name] : name
 				if (xmlns && !tagName) {
+					// I think that `sax` already validates closing tags internally,
+					// i.e. it's likely that it already emits an "error" event
+					// when it encounters an unclosed tag, in which case this error
+					// is not technically possible. And if it ever gets thrown
+					// then that would mean that there's a bug in the code.
 					throw new Error(`Unknown closing tag: ${name}`)
 				}
 				onCloseTag(tagName, state)
@@ -81,25 +127,27 @@ export default function parseXmlStream(xml, {
 		}
 
 		if (STREAMING_MODE) {
-			const parser = sax.createStream(strict, parserOptions)
-			parser.on('error', onerror)
-			parser.on('text', ontext)
-			parser.on('opentag', onopentag)
-			parser.on('closetag', onclosetag)
-			parser.on('attribute', onattribute)
-			parser.on('end', onend)
-			Readable.from(xml).pipe(parser)
+			parserStream.on('error', onerror)
+			parserStream.on('text', ontext)
+			parserStream.on('opentag', onopentag)
+			parserStream.on('closetag', onclosetag)
+			parserStream.on('attribute', onattribute)
+			parserStream.on('end', onend)
 		} else {
-			const parser = sax.parser(strict, parserOptions)
 			parser.onerror = onerror
 			parser.ontext = ontext
 			parser.onopentag = onopentag
 			parser.onclosetag = onclosetag
 			parser.onattribute = onattribute
 			parser.onend = onend
-			parser.write(xml).end()
 		}
 	})
+
+	return {
+		promise,
+		write,
+		end
+	}
 }
 
 function getAttributesWithoutXmlnsPrefixes(attributes) {

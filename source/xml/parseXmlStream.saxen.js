@@ -3,100 +3,128 @@
 // https://gitlab.com/catamphetamine/read-excel-file/-/work_items/115
 // Because of that, `saxen` source code had to be copy-pasted.
 //
+// Not to mention that it would have to be copy-pasted anyway for compatiblity with `worker-f`
+// because `Parser` is not a "self-contained" function.
+//
 // import { Parser } from 'saxen'
 import Parser from '../saxen/parser.js'
 
-export default function parseXmlStream(xml, {
-	createInitialState,
-	onOpenTag,
-	onCloseTag,
-	onText
-}) {
-	// This function was put inside the `parseXmlStream()` function body
-	// in order to prevent it from becoming an "external dependency"
-	// when using `worker-f` package to run this code in a worker.
-	const TAG_NAME_PREFIX = /.+:/
-	function trimXmlnsPrefix(tagName) {
-		return tagName.replace(TAG_NAME_PREFIX, '')
-	}
+/**
+ * Parses XML markup in a streaming fashion by calling the supplied callback functions as the XML markup is being input.
+ * @param {any} state — The initial `state`. This `state` will supposedly be modified by the callback functions as the XML is being parsed.
+ * @param {function} [onOpenTag]
+ * @param {function} [onCloseTag]
+ * @param {function} [onText]
+ * @returns {object} An object with properties: `promise`, `write(string)`, `end()`. The `promise` resolves with nothing.
+ */
+export default function parseXmlStream(
+  state,
+  onOpenTag,
+  onCloseTag,
+  onText
+) {
+  let errored = false
 
-	return new Promise((resolve, reject) => {
-		let errored = false
+  const mustNotHaveErrored = () => {
+    if (errored) {
+      // If this error is thrown then it means that there's a bug in the code
+      // because the code should not have got here if the XML parsing process
+      // has already errored.
+      throw new Error('Errored')
+    }
+  }
 
-		const xmlns = true
+  let resolvePromise
 
-		const state = createInitialState()
+  const xmlns = true
 
-		// an error happened.
-		const onerror = (error) => {
-			if (errored) {
-				return
-			}
-			errored = true
-			reject(error)
-		}
+  // `proxy: true` option enables "proxy" mode.
+  //
+  // In "proxy" mode, `onopentag` and `onclosetag` receive slightly different arguments:
+  // * element name is replaced with element object
+  // * getAttribute() function is not passed
+  //
+  const parser = new Parser({ proxy: true })
 
-		// got some text. `text` is the string of text.
-		const ontext = (text, decodeEntities) => {
-			if (onText) {
+  // Parse XML "namespaces" (`xmlns` stuff).
+  if (xmlns) {
+    parser.ns()
+  }
+
+  const write = (xml) => {
+    mustNotHaveErrored()
+    parser.write(xml)
+  }
+
+  const end = () => {
+    mustNotHaveErrored()
+    parser.end()
+		resolvePromise()
+  }
+
+	// This `promise` resolves with the final `state` when finished parsing.
+	const promise = new Promise((resolve, reject) => {
+    resolvePromise = resolve
+
+    // on XML parsing error
+    const onerror = (error) => {
+      errored = true
+      // If the error is not re-thrown here, the parser will simply keep parsing,
+      // i.e. it doesn't halt after encountering an error and doesn't require manual resuming.
+      // So it must re-throw the error here in order for the parser to stop.
+      // Because the error is thrown inside a `new Promise()` constructor,
+      // the promise will reject automatically.
+      throw error
+    }
+
+    // got some text. `text` is the string of text.
+    const ontext = (text, decodeEntities) => {
+      if (onText) {
 				// `saxen` doesn't decode character references (`&#233;`, `&amp;`, etc) in text:
 				// instead, it provides a `decodeEntities()` function for the consumer to call.
 				onText(decodeEntities(text), state)
-			}
-		}
+      }
+    }
 
-		// opened a tag. `node` has "name" and "attributes"
-		const onopentag = (element, decodeEntities, selfClosing, getContext) => {
-			if (onOpenTag) {
+    // opened a tag. `node` has "name" and "attributes"
+    const onopentag = (element, decodeEntities, selfClosing, getContext) => {
+      if (onOpenTag) {
 				// `saxen` doesn't decode character references (`&#233;`, `&amp;`, etc)
 				// in attribute values either, so decode them here.
 				const attributes = element.attrs
 				for (const name in attributes) {
 					attributes[name] = decodeEntities(attributes[name])
 				}
-				// * `element.originalName` — The tag name as written in the XML string, retaining the original prefix regardless of the list of pre-configured namespace mappings.
-				// * `element.name` — The tag name with the namespace prefix resolved against the list of pre-configured namespace mappings. I.e. the namespace prefix will potentially be replaced with one from the pre-configured namespace map.
-				onOpenTag(
-					xmlns ? trimXmlnsPrefix(element.originalName) : element.name,
+        // * `element.originalName` — The tag name as written in the XML string, retaining the original prefix regardless of the list of pre-configured namespace mappings.
+        // * `element.name` — The tag name with the namespace prefix resolved against the list of pre-configured namespace mappings. I.e. the namespace prefix will potentially be replaced with one from the pre-configured namespace map.
+        onOpenTag(
+          xmlns ? trimXmlnsPrefix(element.originalName) : element.name,
 					attributes,
-					state
-				)
-			}
-		}
+          state
+        )
+      }
+    }
 
-		// closed a tag.
-		const onclosetag = (element) => {
-			if (onCloseTag) {
-				// * `element.originalName` — The tag name as written in the XML string, retaining the original prefix regardless of the list of pre-configured namespace mappings.
-				// * `element.name` — The tag name with the namespace prefix resolved against the list of pre-configured namespace mappings. I.e. the namespace prefix will potentially be replaced with one from the pre-configured namespace map.
-				const tagName = xmlns ? trimXmlnsPrefix(element.originalName) : element.name
-				onCloseTag(tagName, state)
-			}
-		}
+    // closed a tag.
+    const onclosetag = (element) => {
+      if (onCloseTag) {
+        // * `element.originalName` — The tag name as written in the XML string, retaining the original prefix regardless of the list of pre-configured namespace mappings.
+        // * `element.name` — The tag name with the namespace prefix resolved against the list of pre-configured namespace mappings. I.e. the namespace prefix will potentially be replaced with one from the pre-configured namespace map.
+        const tagName = xmlns ? trimXmlnsPrefix(element.originalName) : element.name
+        onCloseTag(tagName, state)
+      }
+    }
 
-		// `proxy: true` option enables "proxy" mode.
-		//
-		// In "proxy" mode, `onopentag` and `onclosetag` receive slightly different arguments:
-		// * element name is replaced with element object
-		// * getAttribute() function is not passed
-		//
-		const parser = new Parser({ proxy: true })
+    parser.on('error', onerror)
+    parser.on('text', ontext)
+    parser.on('openTag', onopentag)
+    parser.on('closeTag', onclosetag)
+  })
 
-		// Parse XML "namespaces" (`xmlns` stuff).
-		if (xmlns) {
-			parser.ns()
-		}
+  return { promise, write, end }
+}
 
-		parser.on('error', onerror)
-		parser.on('text', ontext)
-		parser.on('openTag', onopentag)
-		parser.on('closeTag', onclosetag)
-
-		parser.parse(xml)
-
-		if (errored) {
-			return
-		}
-		resolve(state)
-	})
+const TAG_NAME_PREFIX = /.+:/
+function trimXmlnsPrefix(tagName) {
+  return tagName.replace(TAG_NAME_PREFIX, '')
 }

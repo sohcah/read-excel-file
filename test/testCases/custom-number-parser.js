@@ -1,6 +1,6 @@
 export default async function({ readSheetFromFile, expect }) {
 	const data = await readSheetFromFile({
-		parseNumber: (string) => string
+		parseNumber: (string) => Number(string) + 1000
 	})
 
 	expect(data).to.deep.equal([
@@ -14,9 +14,9 @@ export default async function({ readSheetFromFile, expect }) {
 		],
 		[
 			new Date(Date.UTC(2018, 3 - 1, 24)),
-			'123',
+			1000 + 123,
 			false,
-			'210.45',
+			1000 + 210.45,
 			'Chemistry',
 			'(123) 456-7890'
 		]

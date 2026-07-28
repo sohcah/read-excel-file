@@ -16,6 +16,6 @@ describe('parseExcelDate', () => {
     // Excel stores dates as integers.
     // E.g. '24/03/2018' === 43183
 		const DAYS_BETWEEN_1900_EPOCH_AND_1904_EPOCH = 1462
-		expect(parseExcelDate(43183 - DAYS_BETWEEN_1900_EPOCH_AND_1904_EPOCH, { epoch1904: true }).getTime()).to.equal(date.getTime())
+		expect(parseExcelDate(43183 - DAYS_BETWEEN_1900_EPOCH_AND_1904_EPOCH, true).getTime()).to.equal(date.getTime())
 	})
 })

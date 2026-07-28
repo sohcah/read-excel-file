@@ -1,0 +1,81 @@
+// This code was originally submitted by Etienne Prothon.
+// https://gitlab.com/catamphetamine/read-excel-file/-/merge_requests/11
+
+import { describe, it } from 'mocha'
+import { expect } from 'chai'
+
+import InvalidInputError from '../xlsx/file/InvalidInputError.js'
+
+import unpackXlsxFileBrowser from './unpackXlsxFileBrowser.js'
+
+describe('unpackXlsxFileBrowser', () => {
+	it('should reject on invalid (non-zip) data', async () => {
+		const garbage = Buffer.from('this is definitely not a zip archive')
+
+		let thrown
+		try {
+			await unpackXlsxFileBrowser(getArrayBuffer(garbage))
+		} catch (caught) {
+			thrown = caught
+		}
+		expect(thrown).to.be.an.instanceof(InvalidInputError)
+		expect(thrown.code).to.equal('FILE_NOT_SUPPORTED')
+	})
+
+	it('should not reject on valid (zip) data', async () => {
+		const fileData = Buffer.from([0x50, 0x4B, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+
+		let thrown
+		try {
+			await unpackXlsxFileBrowser(getArrayBuffer(fileData))
+		} catch (caught) {
+			thrown = caught
+		}
+		expect(thrown).to.be.undefined
+	})
+
+	it('should reject invalid ZIP input', async () => {
+		const invalidZip = Buffer.from([0x50, 0x4B, 0x99, 0x99])
+
+		let thrown
+		try {
+			await unpackXlsxFileBrowser(getArrayBuffer(invalidZip))
+		} catch (caught) {
+			thrown = caught
+		}
+		expect(thrown).to.be.an.instanceof(InvalidInputError)
+		expect(thrown.code).to.equal('INVALID_ZIP')
+	})
+
+	it('should reject empty input', async () => {
+		const empty = Buffer.from([])
+
+		let thrown
+		try {
+			await unpackXlsxFileBrowser(getArrayBuffer(empty))
+		} catch (caught) {
+			thrown = caught
+		}
+		expect(thrown).to.be.an.instanceof(InvalidInputError)
+		expect(thrown.code).to.equal('NO_DATA')
+	})
+
+	it('should reject a legacy binary `.xls` file', async () => {
+		// The first bytes of an OLE2 Compound File — the container of a binary `.xls` file.
+		const xls = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1])
+
+		let thrown
+		try {
+			await unpackXlsxFileBrowser(getArrayBuffer(xls))
+		} catch (caught) {
+			thrown = caught
+		}
+		expect(thrown).to.be.an.instanceof(InvalidInputError)
+		expect(thrown.code).to.equal('XLS_FILE_NOT_SUPPORTED')
+	})
+})
+
+// Returns an exact `ArrayBuffer` from a possibly-"pooled" `Buffer`.
+function getArrayBuffer(buffer) {
+	return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+}

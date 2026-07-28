@@ -11,6 +11,8 @@
 // but the weird part is that when enabled, "streaming" mode results in significantly slower parsing:
 // about `3.1` secs. in "streaming" mode vs about `1.4` secs. in non-"streaming" mode.
 //
+// `saxen` has a PR open that adds "streaming" functionality: https://github.com/nikku/saxen/pull/27
+//
 // `sax` "bundled" size is `22.5 kB` (`8.1 kB` gzipped).
 // `saxen` "bundled" size is `6.15 kB` (`2.7 kB` gzipped).
 //

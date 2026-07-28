@@ -385,7 +385,33 @@ readExcelFile(file, {
 
 ## Formulas
 
-This package doesn't support reading cells that use formulas to calculate the value: `SUM`, `AVERAGE`, etc.
+When reading cells that use formulas to calculate their value, it expects such values to already be pre-computed, which is always the case when the file is created in a spreadsheet editor application. However, when the file is generated programmatically by a custom script, it might skip pre-computing such values, which is allowed by the specification. Such cells will be interpreted as empty ones. <!-- Such cells with throw an error. -->
+
+## Errors
+
+### `InvalidInputError`
+
+Sometimes people confuse `.xlsx` files with legacy binary `.xls` ones. The difference might be tricky to spot, so this package explicitly throws an `InvalidInputError` in such (and some other) cases.
+
+* `name: "InvalidInputError"`
+* `code: string`
+  * `"INPUT_TYPE_NOT_SUPPORTED"` — The input argument is not of a supported type.
+  * `"XLS_FILE_NOT_SUPPORTED"` — The input is a legacy binary `.xls` file (OLE2 Compound File Binary format), which is not supported. Such files should be re-saved in `.xlsx` format in order to be readable by this package.
+  * `"FILE_NOT_SUPPORTED"` — The input is neither `.xlsx` nor `.xls` file.
+  * `"INVALID_ZIP"` — The input seems to be an `.xlsx` file, and an `.xlsx` file must be a valid ZIP archive, which it isn't.
+  * `"NO_DATA"` — The input is empty.
+
+### `InvalidSpreadsheetError`
+
+It might throw a `InvalidSpreadsheetError` if there's something wrong with the `.xlsx` file contents while attempting to parse it.
+
+* `name: "InvalidSpreadsheetError"`
+
+### `SheetNotFoundError`
+
+`SheetNotFoundError` will be thrown if a specified sheet doesn't exist.
+
+* `name: "SheetNotFoundError"`
 
 ## Performance
 
@@ -785,7 +811,7 @@ An `.xlsx` file is just a `.zip` archive with an `.xslx` file extension. This pa
 To include this library directly via a `<script/>` tag on a page, one can use any npm CDN service, e.g. [unpkg.com](https://unpkg.com) or [jsdelivr.com](https://jsdelivr.com)
 
 ```html
-<script src="https://unpkg.com/read-excel-file@5.x/bundle/read-excel-file.min.js"></script>
+<script src="https://unpkg.com/read-excel-file@9.x/bundle/read-excel-file.min.js"></script>
 
 <script>
   var input = document.getElementById('input')
@@ -817,6 +843,11 @@ Finally, one could go even further with the "streaming" approach and output not 
 * [`fflate`](https://www.npmjs.com/package/fflate) — Unzips `.zip` archives in web browsers.
 * [`unzipper-esm`](https://www.npmjs.com/package/unzipper-esm) — Unzips `.zip` archives in Node.js using `stream` API.
 * [`saxen`](https://www.npmjs.com/package/saxen) — Parses XML in a streaming fashion.
+
+## Contributors
+
+* [Stian Jensen](https://github.com/stianjensen) — Use `fflate` unzipper on server side ([1](https://github.com/catamphetamine/read-excel-file/pull/122), [2](https://github.com/catamphetamine/read-excel-file/pull/123))
+* [Etienne Prothon](https://github.com/EtienneProthon) — Reject non `.xlsx` files, including the legacy binary `.xls` files ([1](https://gitlab.com/catamphetamine/read-excel-file/-/merge_requests/11)). Fix parsing of "encoded" characters ([1](https://gitlab.com/catamphetamine/read-excel-file/-/merge_requests/10)).
 
 ## GitHub
 

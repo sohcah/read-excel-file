@@ -15,7 +15,7 @@ export default async function runTestCases(TEST_CASES, {
 		try {
 			const testCaseFunction = await import(jsFilePath)
 			await testCaseFunction.default({
-				readFile: () => fs.readFileSync(xlsxFilePath),
+				readFile: async () => fs.readFileSync(xlsxFilePath),
 				readSheet,
 				readSheetFromFile: (...args) => readSheet(getInputArgumentFromFilePath(xlsxFilePath), ...args),
 				readSheetsFromFile: (...args) => readXlsxFile(getInputArgumentFromFilePath(xlsxFilePath), ...args),

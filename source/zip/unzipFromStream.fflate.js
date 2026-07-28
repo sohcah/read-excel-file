@@ -68,6 +68,8 @@ import { Unzip } from 'fflate'
 import { Buffer } from 'node:buffer'
 import zlib from 'node:zlib'
 
+import UnzipError, { createUnzipError } from './UnzipError.js'
+
 // Native `zlib` is faster than `UnzipInflate`.
 // * When decompressing a `1 MB` `.xlsx` file, the decompression time is `100 ms`
 //   when using `zlib` decompressor and `150 ms` when using `fflate` "sync" decompressor.
@@ -86,47 +88,30 @@ const USE_ZLIB_DECOMPRESSOR = true
 //   when using "sync" decompressor and `3200 ms` when using "async" decompressor.
 const USE_ASYNC_FFLATE_DECOMPRESSOR = false
 
+const PROMISE_RESOLVE_VALUE = undefined
+
 /**
  * Reads `*.zip` file contents.
  * @param  {Stream} stream
- * @return {Promise<Record<string,Buffer>>} Resolves to an object holding `*.zip` file entries. P.S. `Buffer` is a `Uint8Array`.
+ * @param  {function} onFile
+ * @param  {function} onFileData
+ * @param  {function} onFileDataEnd
+ * @return {Promise<void>}
  */
-export default function unzipFromStream(stream, { filter } = {}) {
-	// The `files` object stores the files and their contents.
-	const files = {}
-	const filesChunks = {}
-
-	const onFile = (filePath) => {
-		// See if this file should be ignored.
-		// If it should, this entry won't be processed, i.e. `Unzip` will not try
-		// to decompress its data, and will just discard it.
-		if (filter && !filter({ path: filePath })) {
-			return false
-		}
-		filesChunks[filePath] = []
-	}
-
-	const onFileData = (filePath, chunk) => {
-		filesChunks[filePath].push(chunk)
-	}
-
-	const onFileDataEnd = (filePath) => {
-		files[filePath] = Buffer.concat(filesChunks[filePath])
-		delete filesChunks[filePath]
-	}
-
-	return unzipFromStream_(stream, onFile, onFileData, onFileDataEnd).then(() => {
-		return files
-	})
-}
-
-const PROMISE_RESOLVE_VALUE = undefined
-
-function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
+export default function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 	return new Promise((resolve, reject) => {
 		let errored = false
 
 		const onError = (error) => {
+			// If `fflate` throws its specific error then it implies that the `.zip` file is not valid.
+			//
+			// By default, `fflate` uses it's own pure-js unzipper.
+			// It could also be configured to use `node:zlib` native module instead.
+			// In that case, it could throw a `code: "Z_DATA_ERROR"` too.
+			//
+			if (isFlateError(error) || error.code === 'Z_DATA_ERROR') {
+				error = createUnzipError(error)
+			}
 			if (!errored) {
 				errored = true
 				reject(error)
@@ -148,7 +133,7 @@ function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 
 		const { validateChunk } = createZipFileValidator((isValid) => {
 			if (!isValid) {
-				onError(new Error('Invalid `.zip` archive'))
+				onError(new UnzipError('INVALID_ZIP'))
 			}
 		})
 
@@ -167,7 +152,9 @@ function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 				return
 			}
 
-			if (onFile(entry.name) === false) {
+			// `entry.originalSize` property will not be present for `.zip` archives
+			// that were created in a streaming fashion.
+			if (onFile(entry.name, entry.originalSize) === false) {
 				return
 			}
 
@@ -179,7 +166,17 @@ function unzipFromStream_(stream, onFile, onFileData, onFileDataEnd) {
 				if (error) {
 					return onError(error)
 				}
-				onFileData(entry.name, chunk)
+				// Sometimes, `chunk` is a `Buffer`. Other times, it's a `Uint8Array`.
+				// It's not really clear in which exact circumstances it's one or the other.
+				if (chunk instanceof Buffer) {
+					onFileData(entry.name, chunk)
+				} else if (chunk instanceof Uint8Array) {
+					onFileData(entry.name, Buffer.from(chunk))
+				} else {
+					// This error is not technically possible.
+					// In case it is thrown, it means that there's a bug in the code.
+					throw new Error('Unsupported type of chunk', chunk)
+				}
 				if (isLast) {
 					stillDecompressingEntriesCount--
 					onFileDataEnd(entry.name)
@@ -320,4 +317,14 @@ class NativeZlibInflate {
 	terminate() {
 		this.inflate.destroy()
 	}
+}
+
+// This function attempts to guess if a given `error` was thrown by `fflate`.
+function isFlateError(error) {
+	// `fflate` doesn't export a `FlateError` class.
+	// https://github.com/101arrowz/fflate/issues/290
+	// return error instanceof FlateError
+
+	// Here, it attempts to guess if an `error` is a `FlateError` by checking if `error.code` is a `number`.
+	return typeof error.code === 'number'
 }
