@@ -17,7 +17,7 @@ export default async function({ readSheetFromFile, expect }) {
 	try {
 		await readSheetFromFile(2)
 	} catch (error) {
-		expect(error.message).to.equal('Sheet number out of bounds: 2. Available sheets count: 1')
+		expect(error.message).to.equal('Sheet not found: 2. Sheet count: 1')
 	}
 
 	// should throw an error when sheet is not found.
@@ -25,6 +25,6 @@ export default async function({ readSheetFromFile, expect }) {
 	try {
 		await readSheetFromFile('Sheet2')
 	} catch (error) {
-		expect(error.message).to.equal('Sheet "Sheet2" not found. Available sheets: "Sheet1"')
+		expect(error.message).to.equal('Sheet not found: Sheet2. Available sheets: Sheet1')
 	}
 }

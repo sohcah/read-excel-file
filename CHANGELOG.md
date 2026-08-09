@@ -1,3 +1,13 @@
+9.3.9 / 26.08.2026
+==================
+
+* Fixed a [bug](https://github.com/catamphetamine/read-excel-file/issues/124) reported by [Julien Herr](https://github.com/juherr) when it threw an error `readFiles(...).then is not a function` when reading an `.xlsx` file that doesn't use shared strings.
+
+9.3.8 / 08.08.2026
+==================
+
+* Added support for reading [Strict OpenXML](https://gitlab.com/catamphetamine/read-excel-file/-/work_items/105) `.xlsx` files, as suggested by [Josh Lin](https://gitlab.com/postor) in his [pull request](https://gitlab.com/catamphetamine/read-excel-file/-/merge_requests/6).
+
 9.3.5 / 28.07.2026
 ==================
 

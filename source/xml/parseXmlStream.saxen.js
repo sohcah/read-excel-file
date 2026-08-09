@@ -36,20 +36,18 @@ export default function parseXmlStream(
 
   let resolvePromise
 
-  const xmlns = true
+  // const xmlns = false
 
-  // `proxy: true` option enables "proxy" mode.
-  //
-  // In "proxy" mode, `onopentag` and `onclosetag` receive slightly different arguments:
-  // * element name is replaced with element object
-  // * getAttribute() function is not passed
-  //
-  const parser = new Parser({ proxy: true })
+  const parser = new Parser()
 
-  // Parse XML "namespaces" (`xmlns` stuff).
-  if (xmlns) {
-    parser.ns()
-  }
+  // // Whether it should parse XML "namespaces" (`xmlns` stuff).
+  // // It parses faster when the "namespaces" mode is disabled.
+  // // That's why it's not enabled.
+  // if (xmlns) {
+  //   // // See `xml/xlsxNamespaces.js` file for the list of possible `.xlsx` namespaces.
+  //   // parser.ns(xlsxNamespaces)
+  //   parser.ns()
+  // }
 
   const write = (xml) => {
     mustNotHaveErrored()
@@ -59,11 +57,11 @@ export default function parseXmlStream(
   const end = () => {
     mustNotHaveErrored()
     parser.end()
-		resolvePromise()
+    resolvePromise()
   }
 
-	// This `promise` resolves with the final `state` when finished parsing.
-	const promise = new Promise((resolve, reject) => {
+  // This `promise` resolves with the final `state` when finished parsing.
+  const promise = new Promise((resolve, reject) => {
     resolvePromise = resolve
 
     // on XML parsing error
@@ -80,38 +78,38 @@ export default function parseXmlStream(
     // got some text. `text` is the string of text.
     const ontext = (text, decodeEntities) => {
       if (onText) {
-				// `saxen` doesn't decode character references (`&#233;`, `&amp;`, etc) in text:
-				// instead, it provides a `decodeEntities()` function for the consumer to call.
-				onText(decodeEntities(text), state)
+        // `saxen` doesn't decode character references (`&#233;`, `&amp;`, etc) in text:
+        // instead, it provides a `decodeEntities()` function for the consumer to call.
+        onText(decodeEntities(text), state)
       }
     }
 
     // opened a tag. `node` has "name" and "attributes"
-    const onopentag = (element, decodeEntities, selfClosing, getContext) => {
+    const onopentag = (elementName, getAttributes, decodeEntities, selfClosing, getContext) => {
       if (onOpenTag) {
-				// `saxen` doesn't decode character references (`&#233;`, `&amp;`, etc)
-				// in attribute values either, so decode them here.
-				const attributes = element.attrs
-				for (const name in attributes) {
-					attributes[name] = decodeEntities(attributes[name])
-				}
-        // * `element.originalName` — The tag name as written in the XML string, retaining the original prefix regardless of the list of pre-configured namespace mappings.
-        // * `element.name` — The tag name with the namespace prefix resolved against the list of pre-configured namespace mappings. I.e. the namespace prefix will potentially be replaced with one from the pre-configured namespace map.
+        const attributes = getAttributes()
+        // `saxen` doesn't decode character references (`&#233;`, `&amp;`, etc)
+        // in attribute values either, so decode them here.
+        // The reason why `saxen` deliberately doesn't decode character references by default
+        // is performance, I assume.
+        for (const name in attributes) {
+          // Also remove an `xmlns` prefix from the attribute name, if present.
+          // When doing so, don't clean up the attribute name with a prefix
+          // because it doesn't interfere, and it's faster this way.
+          attributes[trimXmlnsPrefix(name, true)] = decodeEntities(attributes[name])
+        }
         onOpenTag(
-          xmlns ? trimXmlnsPrefix(element.originalName) : element.name,
-					attributes,
+          trimXmlnsPrefix(elementName),
+          attributes,
           state
         )
       }
     }
 
     // closed a tag.
-    const onclosetag = (element) => {
+    const onclosetag = (elementName) => {
       if (onCloseTag) {
-        // * `element.originalName` — The tag name as written in the XML string, retaining the original prefix regardless of the list of pre-configured namespace mappings.
-        // * `element.name` — The tag name with the namespace prefix resolved against the list of pre-configured namespace mappings. I.e. the namespace prefix will potentially be replaced with one from the pre-configured namespace map.
-        const tagName = xmlns ? trimXmlnsPrefix(element.originalName) : element.name
-        onCloseTag(tagName, state)
+        onCloseTag(trimXmlnsPrefix(elementName), state)
       }
     }
 
@@ -124,7 +122,19 @@ export default function parseXmlStream(
   return { promise, write, end }
 }
 
-const TAG_NAME_PREFIX = /.+:/
-function trimXmlnsPrefix(tagName) {
-  return tagName.replace(TAG_NAME_PREFIX, '')
+function trimXmlnsPrefix(string, isAttributeName) {
+  let i = 0
+  while (i < string.length) {
+    if (string[i] === ':') {
+      // If `string` is an attribute name, filter out `xmlns:...` cases
+      // which aren't really attributes but rather xmlns schema URIs.
+      if (isAttributeName && i === 5 && string.slice(0, 5) === 'xmlns') {
+        // Ignore this attribute.
+      } else {
+        return string.slice(i + 1)
+      }
+    }
+    i++
+  }
+  return string
 }

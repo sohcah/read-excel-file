@@ -1,38 +1,41 @@
 /**
- * Parses XLSX cell address into a row number and a column number.
- * @param {string} coordinatesString
+ * Parses cell address into a row number and a column number.
+ * Examples: "A1" → [1,1], "B2" → [2,2], "AA2091" → [2091, 27], "R988" → [988, 18].
+ * @param {string} cellAddress
  * @returns {number[]} Returns `[rowNumber, columnNumber]`
  */
-export default function parseCellAddress(coordinatesString) {
-  // Coordinate examples: "AA2091", "R988", "B1".
-  const [columnLetters, rowNumberString] = coordinatesString.split(/(\d+)/)
+export default function parseCellAddress(cellAddress) {
+  // const CELL_ADDRESS_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
-  // Converts a letter coordinate to a digit coordinate.
-  // Examples: "A" -> 1, "B" -> 2, "Z" -> 26, "AA" -> 27, etc.
-  //
-  // This function is inlined only to avoid passing it in `worker-f` dependencies.
-  // Otherwise, it would throw: "getColumnNumberFromColumnLetters is not defined".
-  //
-  let n = 0
+  // Split a cell coordinate into the letter part (left) and numeric part (right).
+  // Cell coordinate example: "AA2091", "R988", "B1".
+  let columnNumber = 0
   let i = 0
-  while (i < columnLetters.length) {
-    n *= 26
-    n += LETTERS.indexOf(columnLetters[i])
+  while (i < cellAddress.length) {
+    const charCode = cellAddress.charCodeAt(i)
+    // `48` is the character code of "0", `57` is the character code of "9".
+    if (charCode >= 48 && charCode <= 57) {
+      const rowNumber = Number(cellAddress.slice(i))
+      if (isNaN(rowNumber)) {
+        invalidCellAddress(cellAddress)
+      }
+      return [
+        // Row number (starting at `1`).
+        rowNumber,
+        // Column number (starting at `1`).
+        columnNumber
+      ]
+    }
+    // Convert a letter coordinate to a digit coordinate.
+    // Examples: "A" -> 1, "B" -> 2, "Z" -> 26, "AA" -> 27, etc.
+    columnNumber *= 26 // Same as: CELL_ADDRESS_LETTERS.length
+    columnNumber += cellAddress.charCodeAt(i) - 64 // Same as: CELL_ADDRESS_LETTERS.indexOf(cellAddress[i]) + 1
     i++
   }
-  const columnNumberFromColumnLetters = n
 
-  return [
-    // Row number (starting at `1`).
-    Number(rowNumberString),
-    // Column number (starting at `1`).
-    columnNumberFromColumnLetters
-  ]
+  invalidCellAddress(cellAddress)
 }
 
-// Maps "A1"-like coordinates to `{ row, column }` numeric coordinates.
-//
-// This is `export`ed only to be passed in `worker-f` dependencies.
-// Otherwise, it would throw: "LETTERS is not defined".
-//
-export const LETTERS = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+function invalidCellAddress(cellAddress) {
+  throw new Error(`<c r="${cellAddress}">`)
+}

@@ -71,7 +71,7 @@ export default function parseSpreadsheetInfo(content, parseXml) {
           // For example, `sheetId`s could be `1`, `2`, `4`, if sheet `3` was deleted.
           id: Number(attributes.sheetId),
           name: attributes.name,
-          relationId: attributes['r:id']
+          relationId: attributes.id
         })
       }
     }

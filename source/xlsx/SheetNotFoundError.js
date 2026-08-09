@@ -1,6 +1,10 @@
 export default class SheetNotFoundError extends Error {
-	constructor(message) {
-		super(message)
+	constructor(sheet, sheets) {
+		super(`Sheet not found: ${
+			typeof sheet === 'number'
+			? sheet + '. Sheet count: ' + sheets.length
+			: sheet + '. Available sheets: ' + sheets.join(', ')
+		}`)
 
 		// Set `name` property.
 		//
@@ -22,5 +26,11 @@ export default class SheetNotFoundError extends Error {
 		// By the way, core Node.js errors themselves have a `name` property.
 		//
 		this.name = 'SheetNotFoundError'
+
+		// Sheet name or sheet number.
+		this.sheet = sheet
+
+		// Available sheet names.
+		this.sheets = sheets
 	}
 }

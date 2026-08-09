@@ -229,13 +229,12 @@ function getSheetRelationId(sheet, sheets) {
         return _sheet.relationId
       }
     }
-		throw new SheetNotFoundError(`Sheet "${sheet}" not found. Available sheets: ${sheets.map(({ name }) => `"${name}"`).join(', ')}`)
   } else {
 		if (sheet <= sheets.length) {
       return sheets[sheet - 1].relationId
     }
-    throw new SheetNotFoundError(`Sheet number out of bounds: ${sheet}. Available sheets count: ${sheets.length}`)
   }
+  throw new SheetNotFoundError(sheet, sheets.map(_ => _.name))
 }
 
 function getSheetNameByRelationId(sheetRelationId, sheets) {
@@ -279,7 +278,7 @@ function getXmlFilesAtNonFixedPaths(filePaths) {
       // It seems that "sharedStrings.xml" is not required to exist.
       // For example, that could be the case when a spreadsheet doesn't contain any strings.
       // https://github.com/catamphetamine/read-excel-file/issues/85
-      fallback: []
+      fallback: Promise.resolve([])
     },
 
     // The usual file path for "styles" is "xl/styles.xml".

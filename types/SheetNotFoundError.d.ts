@@ -1,4 +1,5 @@
 export class SheetNotFoundError extends Error {
-	constructor(message: string);
+	constructor(sheet: string | number, sheets: string[]);
 	name: 'SheetNotFoundError';
+	sheet: string | number;
 }

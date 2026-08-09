@@ -369,11 +369,24 @@ Although there's still a possibility for an `.xlsx` file to specify a totally-cu
 
 ## Numbers
 
-When reading an `.xlsx` file, any numeric values are parsed from a string to a javascript `number`. But there's an inherent issue with javascript `number`s in general — their [floating-point precision](https://www.youtube.com/watch?v=2gIxbTn7GSc) is sometimes less than ideal. For example, `0.1 + 0.2 != 0.3`. Yet, applications in areas such as finance or banking usually require 100% floating-point precision, which is usually worked around by using a custom implementation of a "decimal" data type such as [`decimal.js`](https://www.npmjs.com/package/decimal.js).
+When reading an `.xlsx` file, any numeric values are parsed from a string to a javascript `number`. And that works for everyone, except when you work in science or finance or banking where numbers absolutely need to be 100% precise, in which case this section is for you, otherwise don't even bother reading it.
 
-This package supports passing a custom `parseNumber(string)` function as an option when reading an `.xlsx` file. By default, it parses a `string` to a javascript `number`, but one could pass any custom implementation.
+<details>
+<summary>Why javascript numbers aren't 100% precise</summary>
 
-Example: Use "decimal" data type to perform further calculations on fractional numbers with 100% precision.
+######
+
+"So aren't javascript numbers already 100% precise?", you ask. Here're some rather contrived examples:
+
+* `1.0000000000000001` becomes `1`
+* `88259496234518.57` becomes `88259496234518.56`
+* `99999999999999999999` becomes `100000000000000000000`
+
+You see, javascript numbers inherently come with a limited [floating-point precision](https://www.youtube.com/watch?v=2gIxbTn7GSc), which is apparently not enough in the examples shown above.
+
+So what can one do then? For values that you know absolutely need to be 100% precise, use a custom implementation of "decimal" data type such as [`decimal.js`](https://www.npmjs.com/package/decimal.js). Specifically, pass a custom `parseNumber(string)` function as an option when reading an `.xlsx` file, and it will parse any number from string exactly the way you tell it.
+
+Example 1: Parse any numbers as "decimals", exactly as they are specified in the `.xlsx` file.
 
 ```js
 import Decimal from 'decimal.js'
@@ -383,9 +396,24 @@ readExcelFile(file, {
 })
 ```
 
+Example 2: Don't parse any numbers and just leave them as strings.
+
+```js
+import Decimal from 'decimal.js'
+
+readExcelFile(file, {
+  parseNumber: (string) => string
+})
+```
+</details>
+
 ## Formulas
 
-When reading cells that use formulas to calculate their value, it expects such values to already be pre-computed, which is always the case when the file is created in a spreadsheet editor application. However, when the file is generated programmatically by a custom script, it might skip pre-computing such values, which is allowed by the specification. Such cells will be interpreted as empty ones. <!-- Such cells with throw an error. -->
+When reading cells that use formulas to calculate their value, it doesn't really calculate the formula. Instead, it "cheats" by returning the value that is already pre-computed by the spreadsheet editor application. And that works for everyone.
+
+Although I could hypothetically imagine a situation when a file is created not by a spreadsheet editor application, but rather by some hand-made script that doesn't bother pre-computing formulas, which is totally allowed by the specification, in which case such cells will simply be interpreted as empty ones.
+
+Also, sometimes formulas can't be precomputed by a spreadsheet editor application due to an error, such as invalid syntax, or division by zero, or trying to add text to a number, or referenced row or column not found, etc. Such errors will be silently ignored and the cells will be interpreted as empty ones.
 
 ## Errors
 
@@ -393,8 +421,8 @@ When reading cells that use formulas to calculate their value, it expects such v
 
 Sometimes people confuse `.xlsx` files with legacy binary `.xls` ones. The difference might be tricky to spot, so this package explicitly throws an `InvalidInputError` in such (and some other) cases.
 
-* `name: "InvalidInputError"`
-* `code: string`
+* `name` — `"InvalidInputError"`
+* `code` — One of:
   * `"INPUT_TYPE_NOT_SUPPORTED"` — The input argument is not of a supported type.
   * `"XLS_FILE_NOT_SUPPORTED"` — The input is a legacy binary `.xls` file (OLE2 Compound File Binary format), which is not supported. Such files should be re-saved in `.xlsx` format in order to be readable by this package.
   * `"FILE_NOT_SUPPORTED"` — The input is neither `.xlsx` nor `.xls` file.
@@ -403,15 +431,17 @@ Sometimes people confuse `.xlsx` files with legacy binary `.xls` ones. The diffe
 
 ### `InvalidSpreadsheetError`
 
-It might throw a `InvalidSpreadsheetError` if there's something wrong with the `.xlsx` file contents while attempting to parse it.
+Will be thrown if there's something wrong with the `.xlsx` file contents while attempting to parse it.
 
-* `name: "InvalidSpreadsheetError"`
+* `name` — `"InvalidSpreadsheetError"`
 
 ### `SheetNotFoundError`
 
-`SheetNotFoundError` will be thrown if a specified sheet doesn't exist.
+Will be thrown if a requested sheet doesn't exist.
 
-* `name: "SheetNotFoundError"`
+* `name` — `"SheetNotFoundError"`
+* `sheet` — Sheet name or sheet number
+* `sheets` — Available sheet names
 
 ## Performance
 
@@ -420,22 +450,32 @@ Here're the results of reading [sample `.xlsx` files](https://examplefile.com/do
 |File Size| Browser  | Node.js  |
 |---------|----------|----------|
 |   1 MB  | 0.1 sec. | 0.1 sec. |
-|  10 MB  | 0.5 sec. | 0.6 sec. |
-|  50 MB  | 2.6 sec. | 3.0 sec. |
+|  10 MB  | 0.5 sec. | 0.5 sec. |
+|  50 MB  | 2.5 sec. | 2.5 sec. |
 
-To run the benchmark in Node.js, clone the repository, download the sample `.xlsx` files to `./test/benchmark` folder, run `npm install` and then `npm run test:benchmark`.
+To run the benchmark in Node.js, clone the repository, download sample `.xlsx` files to `./test/benchmark` folder, run `npm install` and then `npm run test:benchmark:node`.
 
 To run the benchmark in a web browser, open the demo page, open the console and choose an `.xlsx` file.
 
-#### Under the Hood
+<details>
+<summary>Performance tips</summary>
 
-How it works is it first unzips an `.xlsx` file into a tree of `.xml` files and then parses those `.xml` files into spreadsheet data.
+######
 
-The unzipping part is "asynchronous" in Node.js and conditionally "asychronous" in web browsers (i.e. it is "asynchronous" only for `.xlsx` files larger than `512 KB`).
+Reading an `.xlsx` file is performed in 3 steps:
 
-The XML parsing part is "synchronous" and is written using a [SAX parser](https://en.wikipedia.org/wiki/Simple_API_for_XML).
+* Step 1. Unzip an `.xlsx` file into a tree of `.xml` files.
+* Step 2. Parse sheet data from those `.xml` files.
+* Step 3. If `schema` option was passed, use it to transform sheet data rows into JSON objects.
 
-If `schema` parameter was passed, it will perform an additional last step of parsing sheet data using a schema. This part is "synchronous", and could be performed separately using `parseSheetData()` function.
+When running in Node.js, the unzip step is outsourced to [`unzipper-esm`](https://www.npmjs.com/package/unzipper-esm) and is "asynchronous" — it uses Node.js "native" `zlib` module which unzips data in a separate thread.
+
+When running in a web browser, the unzip step is outsourced to [fflate](https://npmjs.com/package/fflate) which does it "asynchronously" only for `.xlsx` files larger than `512 KB` (the threshold is [hardcoded](https://github.com/101arrowz/fflate/blob/dcb3714a6c25db3a2748641019c5277413d09714/src/index.ts#L3797-L3804) in `fflate` code).
+
+The XML parsing step is written using [saxen](https://www.npmjs.com/package/saxen) which is a [SAX parser](https://en.wikipedia.org/wiki/Simple_API_for_XML). This step is "synchronous".
+
+The last step of converting sheet rows to JSON objects is only performed when `schema` option is passed. It is also "synchronous".
+</details>
 
 ## Schema
 
@@ -501,23 +541,23 @@ The result is `{ objects, errors }`
 Specifically, a `schema` should be an object having the same keys as a resulting JSON object, with values being nested objects having the following properties:
 
 * `column` — The title of the column to read the value from.
-  * If the column is missing from the spreadsheet, the property value will be `undefined`.
+  * If the column does not exist, the property value will be `undefined`.
     * This can be overridden by passing `propertyValueWhenColumnIsMissing` option. Is `undefined` by default.
-  * If the column is present in the spreadsheet but is empty, the property value will be `null`.
+  * If the column exists but is empty, the property value will be `null`.
     * This can be overridden by passing `propertyValueWhenCellIsEmpty` option. Is `null` by default.
-* `required` — (optional) Is the value required?
-  * Could be one of:
-    * `required: boolean`
-      * `true` — The column must not be missing from the spreadsheet and the cell value must not be empty.
-      * `false` — The column can be missing from the spreadsheet, or the cell value can be empty.
-    * `required: (object) => boolean` — A function returning `true` or `false` depending on the other properties of the object.
+* `required` — (optional) Is the value required? Could be one of:
+  * `true` — The column must exist and the cell value must not be empty.
+  * `false` — The column can be missing and the cell value can be empty.
+  * `(object) => boolean` — A function returning `true` or `false` depending on the other properties.
   <!-- * To skip `required` validation for a column that is missing from a spreadsheet, one could pass `shouldSkipRequiredValidationWhenColumnIsMissing` option. It should be a function: `(columnTitle, { object }) => boolean`. By default it always returns `false` meaning that when `columnTitle` is missing from the spreadsheet, it will not skip performing the `required` validation for it. -->
 * `validate(value)` — (optional) Validates the value. Is only called for non-empty cells. If the value is invalid, this function should throw an error.
 * `schema` — (optional) If the value is going to be a nested object, `schema` should describe that nested object.
-  * If when parsing such nested object, all of its property values happen to be empty — `undefined` or `null` — then the nested object will be itself set to `null`.
+  * If when parsing such nested object, all of its properties are parsed as `undefined` or `null` then the nested object itself will be set to `null`.
     * This can be overridden by passing `transformEmptyObject(object, { path? })` function as an option. By default, it returns `null`.
     * This applies both to nested objects and to the top-level object itself.
-* `type` — (optional) If the value is not going to be a nested object, `type` should describe the type of the value. It will determine how the cell value will be converted to a property value. If no `type` is specified then there will be no conversion, and the cell value will simply be copied to the property value as is.
+  * A nested object could be marked as `required: false` — this will allow it to be completely absent from the spreadsheet, even if some of its properties are defined with `required: true` flag. But if at least one property of such object is found in the spreadsheet then the `required: false` flag on the object has no longer any effect and any `required: true` properties of the object are now required to exist.
+    * Any other value except `false` is not allowed.
+* `type` — (optional) If the value is not going to be a nested object, the expected type of the value could be specified in the `type` property, and then it will parse/validate the value according to that type.
   * Valid `type`s:
     * Standard types:
       * `String`
@@ -538,19 +578,19 @@ Specifically, a `schema` should be an object having the same keys as a resulting
 
 If there're any errors during the conversion process, the `errors` property returned from the function will be a non-empty array (by default, it's an empty array). Each `error` object has properties:
 
-* `error: string` — The error code. Examples: `"required"`, `"invalid"`.
+* `error` (string) — Error code. Examples: `"required"`, `"invalid"`.
   * If a custom `validate()` function is defined and it throws a `new Error(message)` then the `error` property will be the same as the `message` argument.
   * If a custom `type()` function is defined and it throws a `new Error(message)` then the `error` property will be the same as the `message` argument.
 * `reason?: string` — An optional secondary error code providing more details about the error. I.e. "`error.error` happened specifically because of `error.reason`". Currently, it could only be returned for the standard `type`s.
   * Example: `{ error: "invalid", reason: "not_a_number" }` for a `type: Number` property means that "the cell value is _invalid_ **because** it's _not a number_".
-* `row: number` — The row number, starting from `1`.
+* `row` (number) — Data row number, starting from `1`.
   * `row: 1` means "first row of data", etc.
-  * Don't mind the header row.
-* `column: string` — The column title.
-* `columnIndex: number` — The column index.
+  * The header row is ignored.
+* `column` (string) — Column title.
+* `columnIndex` (number) — Column index.
   * `columnIndex: 0` means "first column", etc.
-* `value?: any` — The cell value.
-* `type?: any` — The `type` of the property, as defined by the `schema`.
+* `value` — Cell value, when present.
+* `type` — The `type` of the property, as defined in the `schema`.
 
 Example:
 

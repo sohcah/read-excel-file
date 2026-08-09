@@ -8,6 +8,21 @@
  * @return {object} — An object of shape `{ sheets: Record<string, string>, sharedStrings: string?, styles: string? }`
  */
 export default function parseFilePaths(content, parseXml) {
+  // There're two standards of `.xlsx` files:
+  // * So-called "transitional", that emerged originally in 2006 and debuted widely with Microsoft Office 2007.
+  // * So-called "strict", that emerged in 2008  with the publication of the ISO/IEC 29500 specification.
+  //
+  // "Transitional" standard was released in 2007 and includes legacy elements, old namespaces,
+  // and compatibility features to support conversions from 1990s binary format `.xls`.
+  // This remains Excel's default save format.
+  //
+  // "Strict" standard was introduced conceptually in 2008, but fully realized with modern namespaces
+  // and no legacy tags (like VML or old drawing quirks) later on. Microsoft added reading support
+  // in Excel 2010 and the ability to save Strict files starting in Excel 2013.
+  //
+  const RELATIONSHIPS_BASE_URL_TRANSITIONAL_STANDARD = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+  const RELATIONSHIPS_BASE_URL_STRICT_STANDARD = 'http://purl.oclc.org/ooxml/officeDocument/relationships/'
+
   // Example:
   // <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   //   ...
@@ -45,13 +60,16 @@ export default function parseFilePaths(content, parseXml) {
 
   function addFilePathForRelation(state, id, type, target) {
     switch (type) {
-      case 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles':
+      case RELATIONSHIPS_BASE_URL_TRANSITIONAL_STANDARD + 'styles':
+      case RELATIONSHIPS_BASE_URL_STRICT_STANDARD + 'styles':
         state.styles = getFilePathFromRelationTarget(target)
         break
-      case 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings':
+      case RELATIONSHIPS_BASE_URL_TRANSITIONAL_STANDARD + 'sharedStrings':
+      case RELATIONSHIPS_BASE_URL_STRICT_STANDARD + 'sharedStrings':
         state.sharedStrings = getFilePathFromRelationTarget(target)
         break
-      case 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet':
+      case RELATIONSHIPS_BASE_URL_TRANSITIONAL_STANDARD + 'worksheet':
+      case RELATIONSHIPS_BASE_URL_STRICT_STANDARD + 'worksheet':
         state.sheets[id] = getFilePathFromRelationTarget(target)
         break
     }

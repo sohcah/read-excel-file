@@ -81,10 +81,14 @@ export default [
 	},
 	{
 		name: 'internal-file-missing',
-		description: '`workbook.xml` file is not present in the archive'
+		description: 'should handle when `workbook.xml` file is not present in the archive'
 	},
 	{
 		name: 'repairable-spreadsheet',
-		description: 'A spreadsheet having sloppy mistakes in the markup could still be repaired'
+		description: 'should repair an `.xlsx` file having sloppy mistakes in `.xml` files content'
+	},
+	{
+		name: 'strict',
+		description: 'should read Strict OpenXML `.xlsx` format'
 	}
 ]
